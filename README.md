@@ -70,6 +70,45 @@ class NormalizeDocument
 
 `get()`/`set()`/`has()`/`forget()` accept dot notation; `merge()` and `all()` work on the whole bag. Everything stored must be JSON-serializable.
 
+## Method reference
+
+The API has three layers: the **facade** manages definitions and creates runs, the **builder** describes a workflow's steps, and the **run model** is how you act on one execution later. In short: `define()` describes, `start()` executes, everything on the builder shapes *what will happen*, and everything on the run shapes *what happens next for that one run*.
+
+### The facade — defining workflows and creating runs
+
+| Method | What it does | When to use it |
+| --- | --- | --- |
+| `AgentWorkflow::define($name)` | Creates a named workflow definition, registers it, and returns the builder to chain steps onto. Pure description — nothing executes. | In a service provider's `boot()`. Definitions must exist on every process (web *and* queue workers), so define them at boot time, never ad hoc in a controller. |
+| `AgentWorkflow::register($class)` | Registers a class-based `Workflow` (see [Class-based definitions](#class-based-definitions)). The config `workflows` array calls this for you at boot. | When you prefer a dedicated class per workflow over builder calls in a provider. Same result as `define()` — just a different home for the definition. |
+| `AgentWorkflow::start($name, input: [], participant: null)` | Creates a run: persists a `WorkflowRun` row with `input` as its initial state and dispatches the first step onto the queue. Returns the run immediately — steps execute in workers. | Anywhere something should *happen*: a controller, a command, a listener. Accepts a registered name or a `Workflow` class name. Pass `participant:` to associate the run with a user/model. |
+| `AgentWorkflow::fake()` | Swaps in a recording manager for tests. Workflows still execute; you get `assertStarted()`, `assertStepRan()`, `assertCompleted()`, etc. | Feature tests. See [Testing](#testing). |
+| `AgentWorkflow::resolveAgentFor(...)` / `transferConversation(...)` | Conversation routing after handoffs. | See [Handoffs](#handoffs) — unrelated to runs; these route *conversations*. |
+
+### The builder — describing steps
+
+All builder methods append a step and return the builder, so they chain. Every step type checkpoints state when it completes. Each accepts `as:` to override the step's auto-generated id (the class basename, or e.g. `when:2`) — useful when the same class appears twice or you want stable ids for auditing.
+
+| Method | What it does | When to use it |
+| --- | --- | --- |
+| `start($target)` | Adds the first step. Literally an alias of `then()` — it exists so definitions read naturally. | Once, first. `$target` is an SDK agent class (agent step) or any invokable class (callback step) — the builder tells them apart. |
+| `then($target)` | Adds the next sequential step. Runs after the previous step's state is committed. | The default. If in doubt, it's `then()`. |
+| `when($condition, then:, else:)` | Evaluates the closure against checkpointed state at runtime and runs one branch (or skips ahead if `else:` is omitted and the condition is false). Continues sequentially afterward; records the decision in `steps.{id}.branch`. | A fork in the road *within* a run: escalate vs auto-approve, premium vs standard handling. For routing whole conversations between agents across turns, use [handoffs](#handoffs) instead. |
+| `parallel([$a, $b], merge:, mode:)` | Fans out into concurrent branches from one state snapshot, then merges and continues. Default `mode: 'batch'` is a queued `Bus::batch`; `mode: 'sync'` runs in-process. | Independent work whose results you need together (analyze financials + legal + news, then synthesize). Not for steps that depend on each other — that's a chain. Provide `merge:` when branches may write the same keys. |
+| `evaluate($target, until:, maxIterations:)` | Runs `$target` repeatedly until the predicate on state passes or the cap is hit, checkpointing each iteration. Records `iteration` and `satisfied` under `steps.{id}`. | Generate-critique-revise loops where quality is judged by a predicate (usually over a critic agent's structured output). Always set a realistic `maxIterations` — it's your token budget. |
+| `awaitHuman(reason:, schema:)` | Parks the run as `awaiting_human`, persisting the reason and validation rules for the expected response. Nothing runs until `resume()`. | Sign-offs, edits, any decision a person must make. The `schema:` is what your approval UI should collect. |
+| `awaitEvent($event)` | Parks the run as `awaiting_event` until `deliverEvent()` is called with the matching name. | Waiting on *systems* rather than people: a webhook, a payment confirmation, another job finishing. |
+
+### The run — acting on one execution
+
+`AgentWorkflow::start()` returns a `TimMcLeod\AgentWorkflows\Models\WorkflowRun` (an ordinary Eloquent model you can also query later).
+
+| Method | What it does | When to use it |
+| --- | --- | --- |
+| `$run->retry()` | Re-dispatches a **failed** run from its failed step. Earlier steps keep their committed results. | After you've fixed whatever failed (provider outage, bad config, a bug). Throws unless the run's status is `failed`. |
+| `$run->resume($response, by:)` | Wakes a run parked by `awaitHuman()` (validates against the schema, merges into state) or by a tool-approval pause (replays the decisions map into the agent). | When the human answers. `by:` records who, on the interrupt. |
+| `$run->deliverEvent($event, $payload)` | Wakes a run parked by `awaitEvent()`; the payload merges into state. | From the webhook/listener where the awaited thing happens. |
+| `$run->workflowState()` | The current checkpoint as a `WorkflowState` bag. | Reading run data in UIs or listeners (`$run->state` gives the raw array). |
+
 ## The five patterns, made durable
 
 > The full version of this section — each official blog example rewritten side by side with its durable equivalent — lives in [docs/five-patterns-made-durable.md](docs/five-patterns-made-durable.md).
