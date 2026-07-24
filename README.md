@@ -1,15 +1,19 @@
 # Agent Workflows for Laravel
 
-**Durable, resumable, human-interruptible agent workflows on top of the [Laravel AI SDK](https://laravel.com/docs/13.x/ai-sdk).**
+**The [Laravel AI SDK](https://laravel.com/docs/13.x/ai-sdk) is how your app talks to an AI. This package is how your app runs a *process* that involves AI: several steps, decisions, waiting on people, and picking up where it left off.**
 
-The official Laravel guidance shows how to compose the five multi-agent patterns (prompt chaining, routing, parallelization, orchestrator-workers, evaluator-optimizer) with framework primitives — `Pipeline`, `Concurrency::run()`, plain loops. All of it is in-process and ephemeral: a failure at step 4 reruns steps 1–3, nothing survives a deploy, and there is no way to pause for a human and continue tomorrow.
+Picture a real feature: reviewing a contract. Extract the clauses, score the risk, escalate if the risk is high, **wait for a manager to sign off**, then write the summary. With the SDK alone you can call agent one, then agent two, then hit the wall: PHP cannot wait until Tuesday for the manager to click approve. The request ends and everything the code knew is gone. And if the last step throws, the earlier steps rerun, so you pay for their tokens twice.
 
-This package makes those same patterns **crash-safe** on the substrate Laravel already ships: queues, batches, retries, and Horizon.
+What teams build around that wall is always the same pile of glue: a `pending_reviews` table, a couple of jobs, status columns, a resume endpoint, retry logic. Every team reinvents the pile, slightly differently, with slightly different bugs.
 
-- **Checkpointed** — workflow state is persisted after every step. A failed step retries *from that step*, not from the beginning.
-- **Resumable** — runs survive crashes, deploys, and queue restarts.
-- **Interruptible** — `awaitHuman()` parks a run for hours or days; `resume()` validates the human's input and continues. SDK tool-approval pauses surface as workflow interrupts too.
-- **Observable** — every step is a queued job (visible in Horizon), every run and step is a queryable Eloquent record, and lifecycle events fire throughout.
+This package is that pile, done once, properly, on the substrate Laravel already ships: queues, batches, retries, and Horizon.
+
+- **A process that can wait.** `awaitHuman()` parks a run in the database for hours or weeks; `resume()` validates the human's answer and continues. `awaitEvent()` does the same for webhooks and other systems.
+- **Retry the step that broke, not the whole thing.** Every step's result is committed before the next step runs. If step 5 fails, `$run->retry()` re-runs step 5. Steps 1 to 4 keep their results and their token bill stays paid.
+- **Memory between steps.** A state bag is saved after every step, so step 5 can read what step 2 produced, even days later on a different server.
+- **A paper trail.** Every run and every attempt of every step is a queryable Eloquent record: status, timings, token counts, errors, who approved what and when.
+
+Already know the multi-agent space? This package deliberately adopts the vocabulary of the five patterns from [Laravel's official multi-agent guidance](https://laravel.com/blog/building-multi-agent-workflows-with-the-laravel-ai-sdk) and makes each one crash-safe: see [The five patterns, made durable](docs/five-patterns-made-durable.md).
 
 > **Status: pre-release.** The core engine (sequential, conditional, parallel, evaluator steps; checkpoint/retry; interrupts; agent handoffs; events; testing fakes) is implemented and tested. APIs may change before 1.0.
 
