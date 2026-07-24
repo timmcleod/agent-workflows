@@ -12,12 +12,13 @@ use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\ConflictBStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FlakyStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 
 it('fans out into a durable batch and merges the branch states', function () {
-    AgentWorkflow::define('fanout')
+    defineWorkflow('fanout', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->parallel([BranchAStep::class, BranchBStep::class])
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 
     $run = AgentWorkflow::start('fanout', []);
 
@@ -32,9 +33,9 @@ it('fans out into a durable batch and merges the branch states', function () {
 });
 
 it('fails the run when branches write conflicting values without a merge strategy', function () {
-    AgentWorkflow::define('clash')
+    defineWorkflow('clash', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
-        ->parallel([ConflictAStep::class, ConflictBStep::class]);
+        ->parallel([ConflictAStep::class, ConflictBStep::class]));
 
     try {
         AgentWorkflow::start('clash', []);
@@ -51,14 +52,14 @@ it('fails the run when branches write conflicting values without a merge strateg
 });
 
 it('resolves conflicts with a custom merge strategy', function () {
-    AgentWorkflow::define('resolved')
+    defineWorkflow('resolved', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->parallel(
             [ConflictAStep::class, ConflictBStep::class],
             merge: fn (array $branches, array $input) => array_merge($input, [
                 'shared' => $branches['ConflictAStep']['shared'].'+'.$branches['ConflictBStep']['shared'],
             ]),
-        );
+        ));
 
     $run = AgentWorkflow::start('resolved', []);
 
@@ -67,10 +68,10 @@ it('resolves conflicts with a custom merge strategy', function () {
 });
 
 it('runs branches in-process in sync mode', function () {
-    AgentWorkflow::define('sync-fanout')
+    defineWorkflow('sync-fanout', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->parallel([BranchAStep::class, BranchBStep::class], mode: 'sync')
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 
     $run = AgentWorkflow::start('sync-fanout', []);
 
@@ -83,10 +84,10 @@ it('runs branches in-process in sync mode', function () {
 it('fails the run at the parallel step when a branch fails, and retries the whole fan-out', function () {
     FlakyStep::$fail = true;
 
-    AgentWorkflow::define('half-boom')
+    defineWorkflow('half-boom', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->parallel([BranchAStep::class, FlakyStep::class])
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 
     try {
         AgentWorkflow::start('half-boom', []);

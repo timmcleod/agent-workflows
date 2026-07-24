@@ -6,12 +6,13 @@ use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
 use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 
 beforeEach(function () {
-    AgentWorkflow::define('payment-flow')
+    defineWorkflow('payment-flow', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->awaitEvent('payment.confirmed')
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 });
 
 it('parks the run as awaiting_event with the event name persisted', function () {

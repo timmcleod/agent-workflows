@@ -9,7 +9,6 @@ use TimMcLeod\AgentWorkflows\WorkflowManager;
 use TimMcLeod\AgentWorkflows\WorkflowRegistry;
 
 /**
- * @method static \TimMcLeod\AgentWorkflows\WorkflowDefinition define(string $name)
  * @method static \TimMcLeod\AgentWorkflows\WorkflowDefinition register(\TimMcLeod\AgentWorkflows\Workflow|string $workflow)
  * @method static \TimMcLeod\AgentWorkflows\Models\WorkflowRun start(string $name, array<string, mixed> $input = [], ?object $participant = null)
  * @method static \Laravel\Ai\Contracts\Agent resolveAgentFor(string $conversationId, ?string $default = null)

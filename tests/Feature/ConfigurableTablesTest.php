@@ -8,6 +8,7 @@ use TimMcLeod\AgentWorkflows\Models\WorkflowInterrupt;
 use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
 use TimMcLeod\AgentWorkflows\Models\WorkflowStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 
 it('reads table names from the config', function () {
     config()->set('agent-workflows.tables', [
@@ -38,7 +39,7 @@ it('migrates and runs workflows against custom table names', function () {
         ->and(Schema::hasTable('wf_steps'))->toBeTrue()
         ->and(Schema::hasTable('wf_interrupts'))->toBeTrue();
 
-    AgentWorkflow::define('custom-tables')->step(PrepareStep::class);
+    defineWorkflow('custom-tables', fn (WorkflowDefinition $workflow) => $workflow->step(PrepareStep::class));
 
     $run = AgentWorkflow::start('custom-tables', []);
 

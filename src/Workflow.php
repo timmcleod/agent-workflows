@@ -5,10 +5,11 @@ namespace TimMcLeod\AgentWorkflows;
 use Illuminate\Support\Str;
 
 /**
- * Class-based workflow definition — the artisan-generatable alternative to
- * calling AgentWorkflow::define() in a service provider. Register these via
- * the "workflows" array in config/agent-workflows.php (so queue workers know
- * them too) or with AgentWorkflow::register().
+ * A workflow definition. Generate with `php artisan make:agent-workflow`
+ * and register via the "workflows" array in config/agent-workflows.php —
+ * that runs on every process at boot, so queue workers know the definition
+ * too. AgentWorkflow::register() exists for runtime registration (tests,
+ * packages).
  */
 abstract class Workflow
 {

@@ -10,12 +10,13 @@ use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Agents\DeployAgent;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 
 beforeEach(function () {
-    AgentWorkflow::define('deploy')
+    defineWorkflow('deploy', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->step(DeployAgent::class)
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 });
 
 it('surfaces an SDK tool-approval pause as a workflow interrupt', function () {

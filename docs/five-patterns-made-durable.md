@@ -13,7 +13,8 @@ This page rewrites each official example with checkpoints, retry, and resume. Sa
 **Durable:**
 
 ```php
-AgentWorkflow::define('content-pipeline')
+// In ContentPipeline::build():
+return $workflow
     ->step(OutlineAgent::class,
         prompt: fn ($s) => 'Outline an article about: '.$s->get('brief'))
     ->step(DraftAgent::class,
@@ -42,7 +43,8 @@ The run's audit log (`$run->steps`) records every attempt of every step: input-s
 **Durable:**
 
 ```php
-AgentWorkflow::define('support-triage')
+// In SupportTriage::build():
+return $workflow
     ->step(ClassifyTicketAgent::class)
     ->when(fn (WorkflowState $s) => $s->get('steps.ClassifyTicketAgent.structured.urgent'),
         then: EscalationAgent::class,
@@ -59,7 +61,8 @@ The condition is evaluated against **checkpointed** state, the decision is recor
 **Durable:**
 
 ```php
-AgentWorkflow::define('due-diligence')
+// In DueDiligence::build():
+return $workflow
     ->step(FetchCompanyData::class)
     ->parallel([
         FinancialAnalysisAgent::class,
@@ -84,7 +87,8 @@ Branches run as a **`Bus::batch`**: distributed across queue workers, SQS-safe, 
 **Durable:**
 
 ```php
-AgentWorkflow::define('ad-copy')
+// In AdCopy::build():
+return $workflow
     ->step(BriefAgent::class)
     ->evaluate(ReviseCopyAgent::class,
         until: fn (WorkflowState $s) => $s->get('steps.CritiqueAgent.structured.score', 0) >= 8,
@@ -99,7 +103,8 @@ Every iteration is its own checkpointed job. A crash at iteration 3 resumes at i
 None of the official examples can pause. Durability makes waiting a first-class step:
 
 ```php
-AgentWorkflow::define('contract-review')
+// In ContractReview::build():
+return $workflow
     ->step(ExtractClausesAgent::class)
     ->step(RiskAnalysisAgent::class)
     ->awaitHuman(reason: 'Final sign-off required', schema: [

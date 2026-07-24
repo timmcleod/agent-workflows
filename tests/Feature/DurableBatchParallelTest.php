@@ -8,14 +8,15 @@ use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\BranchAStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\BranchBStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 
 it('runs a parallel step as a real Bus::batch on the database queue driver', function () {
     config()->set('queue.default', 'database');
 
-    AgentWorkflow::define('queued-fanout')
+    defineWorkflow('queued-fanout', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->parallel([BranchAStep::class, BranchBStep::class])
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 
     $run = AgentWorkflow::start('queued-fanout', []);
 

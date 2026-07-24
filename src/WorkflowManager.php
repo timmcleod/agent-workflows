@@ -39,19 +39,9 @@ class WorkflowManager
     }
 
     /**
-     * Define (and register) a named workflow.
-     */
-    public function define(string $name): WorkflowDefinition
-    {
-        $definition = new WorkflowDefinition($name);
-
-        $this->registry->register($definition);
-
-        return $definition;
-    }
-
-    /**
-     * Register a class-based workflow definition.
+     * Register a workflow. Workflows listed in the "workflows" config array
+     * are registered automatically at boot; call this directly only for
+     * runtime registration (tests, packages).
      *
      * @param  Workflow|class-string<Workflow>  $workflow
      */

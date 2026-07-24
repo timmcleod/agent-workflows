@@ -89,32 +89,50 @@ class SendReply
 }
 ```
 
-### 3. Define the workflow in a service provider
+### 3. Define the workflow
 
-Definitions live in `boot()` because **queue workers need to know them too**. A worker process that picks up step 2 must be able to look up what step 3 is:
+Every workflow is a class. Generate one:
+
+```bash
+php artisan make:agent-workflow TicketReply
+```
+
+…and describe the steps in `build()`:
 
 ```php
-// app/Providers/AppServiceProvider.php
+// app/AgentWorkflows/TicketReply.php
+
+namespace App\AgentWorkflows;
 
 use App\Agents\DraftReplyAgent;
 use App\Workflows\SendReply;
-use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
+use TimMcLeod\AgentWorkflows\Workflow;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 
-public function boot(): void
+class TicketReply extends Workflow
 {
-    AgentWorkflow::define('ticket-reply')
-        ->step(DraftReplyAgent::class,
-            prompt: fn ($state) => 'Draft a reply to this ticket: '.$state->get('ticket_message'))
-        ->awaitHuman(reason: 'Review the drafted reply', schema: [
-            'final_reply' => 'required|string',
-        ])
-        ->step(SendReply::class);
+    public function build(WorkflowDefinition $workflow): WorkflowDefinition
+    {
+        return $workflow
+            ->step(DraftReplyAgent::class,
+                prompt: fn ($state) => 'Draft a reply to this ticket: '.$state->get('ticket_message'))
+            ->awaitHuman(reason: 'Review the drafted reply', schema: [
+                'final_reply' => 'required|string',
+            ])
+            ->step(SendReply::class);
+    }
 }
 ```
 
 The `prompt:` closure receives the workflow state, so the same agent can be reused across workflows with a different prompt in each. A plain string works for static prompts.
 
-(Prefer a dedicated class per workflow? `php artisan make:agent-workflow TicketReply` — see [Class-based definitions](#class-based-definitions).)
+Then list the class in `config/agent-workflows.php` — this is how **queue workers** learn the definition (a worker picking up step 2 must be able to look up what step 3 is, so definitions are registered at boot on every process):
+
+```php
+'workflows' => [
+    App\AgentWorkflows\TicketReply::class,
+],
+```
 
 ### 4. Start a run from a controller
 
@@ -122,7 +140,7 @@ The `prompt:` closure receives the workflow state, so the same agent can be reus
 // routes/web.php (or a controller)
 
 Route::post('/tickets/{ticket}/draft-reply', function (Ticket $ticket, Request $request) {
-    $run = AgentWorkflow::start('ticket-reply', input: [
+    $run = AgentWorkflow::start(TicketReply::class, input: [
         'ticket_id' => $ticket->id,
         'ticket_message' => $ticket->message,
     ], participant: $request->user());
@@ -173,7 +191,7 @@ $run->failure_reason;   // the exception message
 $run->retry();          // re-queues SendReply only; the agent never re-runs, no tokens re-billed
 ```
 
-That's the whole loop: agents and plain classes as steps, one `define()` in a provider, `start()` from anywhere, a queue worker doing the work, `resume()` when humans answer, `retry()` when things break. Everything below is detail and more step types.
+That's the whole loop: agents and plain classes as steps, one `Workflow` class listed in config, `start()` from anywhere, a queue worker doing the work, `resume()` when humans answer, `retry()` when things break. Everything below is detail and more step types.
 
 ## Workflow state
 
@@ -187,14 +205,13 @@ Three conventions worth knowing:
 
 ## Method reference
 
-The API has three layers: the **facade** manages definitions and creates runs, the **builder** describes a workflow's steps, and the **run model** is how you act on one execution later. In short: `define()` describes, `start()` executes, everything on the builder shapes *what will happen*, and everything on the run shapes *what happens next for that one run*.
+The API has three layers: **`Workflow` classes** describe processes, the **builder** (inside `build()`) describes their steps, and the **run model** is how you act on one execution later. In short: the class describes, `start()` executes, everything on the builder shapes *what will happen*, and everything on the run shapes *what happens next for that one run*.
 
-### The facade — defining workflows and creating runs
+### The facade — creating runs
 
 | Method | What it does | When to use it |
 | --- | --- | --- |
-| `AgentWorkflow::define($name)` | Creates a named workflow definition, registers it, and returns the builder to chain steps onto. Pure description — nothing executes. | In a service provider's `boot()`. Definitions must exist on every process (web *and* queue workers), so define them at boot time, never ad hoc in a controller. |
-| `AgentWorkflow::register($class)` | Registers a class-based `Workflow` (see [Class-based definitions](#class-based-definitions)). The config `workflows` array calls this for you at boot. | When you prefer a dedicated class per workflow over builder calls in a provider. Same result as `define()` — just a different home for the definition. |
+| `AgentWorkflow::register($workflow)` | Registers a `Workflow` class so runs can be started and workers can execute steps. The config `workflows` array calls this for you at boot. | Rarely called directly — list classes in config instead. Direct calls are for runtime registration (tests, packages). |
 | `AgentWorkflow::start($name, input: [], participant: null)` | Creates a run: persists a `WorkflowRun` row with `input` as its initial state and dispatches the first step onto the queue. Returns the run immediately — steps execute in workers. | Anywhere something should *happen*: a controller, a command, a listener. Accepts a registered name or a `Workflow` class name. Pass `participant:` to associate the run with a user/model. |
 | `AgentWorkflow::fake()` | Swaps in a recording manager for tests. Workflows still execute; you get `assertStarted()`, `assertStepRan()`, `assertCompleted()`, etc. | Feature tests. See [Testing](#testing). |
 | `AgentWorkflow::resolveAgentFor(...)` / `transferConversation(...)` | Conversation routing after handoffs. | See [Handoffs](#handoffs) — unrelated to runs; these route *conversations*. |
@@ -230,7 +247,8 @@ All builder methods append a step and return the builder, so they chain. Every s
 ### 1. Prompt chaining — `step()`
 
 ```php
-AgentWorkflow::define('content-pipeline')
+// In ContentPipeline::build():
+return $workflow
     ->step(OutlineAgent::class)
     ->step(DraftAgent::class)
     ->step(PolishAgent::class);
@@ -251,7 +269,8 @@ $run->retry();        // re-dispatches PolishAgent only
 Branch on checkpointed state at runtime. The workflow continues sequentially after whichever branch ran:
 
 ```php
-AgentWorkflow::define('support-triage')
+// In SupportTriage::build():
+return $workflow
     ->step(ClassifyTicketAgent::class)
     ->when(fn (WorkflowState $s) => $s->get('steps.ClassifyTicketAgent.structured.urgent'),
         then: EscalationAgent::class,
@@ -266,7 +285,8 @@ Omit `else:` to simply skip ahead when the condition is false. The decision is r
 Fan out into concurrent branches, each starting from the same state snapshot, then merge and continue:
 
 ```php
-AgentWorkflow::define('due-diligence')
+// In DueDiligence::build():
+return $workflow
     ->step(FetchCompanyData::class)
     ->parallel([
         FinancialAnalysisAgent::class,
@@ -300,7 +320,8 @@ The SDK already does this well — return sub-agents from an agent's `tools()` m
 Loop a step until a predicate on state is satisfied, with a hard iteration cap. Every iteration is checkpointed:
 
 ```php
-AgentWorkflow::define('ad-copy')
+// In AdCopy::build():
+return $workflow
     ->step(BriefAgent::class)
     ->evaluate(ReviseCopyAgent::class,
         until: fn (WorkflowState $s) => $s->get('steps.CritiqueAgent.structured.score', 0) >= 8,
@@ -317,7 +338,8 @@ After the loop, `steps.{id}.iteration` holds the count and `steps.{id}.satisfied
 Park a run until someone signs off. The interrupt persists a reason and an optional response schema (Laravel validation rules), so your approval UI knows exactly what to collect:
 
 ```php
-AgentWorkflow::define('contract-review')
+// In ContractReview::build():
+return $workflow
     ->step(ExtractClausesAgent::class)
     ->step(RiskAnalysisAgent::class)
     ->awaitHuman(reason: 'Final sign-off required', schema: [
@@ -340,7 +362,8 @@ The payload is validated against the schema (a `ValidationException` leaves the 
 Park a run until something happens elsewhere in your system:
 
 ```php
-AgentWorkflow::define('order-flow')
+// In OrderFlow::build():
+return $workflow
     ->step(PrepareOrderAgent::class)
     ->awaitEvent('payment.confirmed')
     ->step(FulfillmentAgent::class);
@@ -420,7 +443,8 @@ AgentWorkflow::transferConversation($conversationId, RefundsAgent::class);
 Any `laravel/ai` agent class can be a step — agents stay plain SDK classes with no package-specific code on them. The step's prompt is defined where the step is, so the same agent can be asked different things in different workflows:
 
 ```php
-AgentWorkflow::define('contract-review')
+// In ContractReview::build():
+return $workflow
     ->step(ExtractClausesAgent::class,
         prompt: fn (WorkflowState $s) => 'Extract the key clauses: '.$s->get('document.text'))
     ->step(RiskAnalysisAgent::class,
@@ -480,40 +504,14 @@ Event::listen(WorkflowFailed::class, function (WorkflowFailed $event) {
 
 `StepCompleted` fires per step (including parallel branches) and carries the audit row — token usage included — which makes cost accounting a one-listener job.
 
-## Class-based definitions
+## Workflow classes
 
-Prefer classes over closures in a provider? Generate one:
+Every workflow is a class extending `Workflow` with a `build()` method (see the [quick start](#quick-start-your-first-workflow-end-to-end) for the full flow: `php artisan make:agent-workflow`, then list the class in the config `workflows` array).
 
-```bash
-php artisan make:agent-workflow ContractReview
-```
+Two details worth knowing:
 
-```php
-namespace App\AgentWorkflows;
-
-use TimMcLeod\AgentWorkflows\Workflow;
-use TimMcLeod\AgentWorkflows\WorkflowDefinition;
-
-class ContractReview extends Workflow
-{
-    public function build(WorkflowDefinition $workflow): WorkflowDefinition
-    {
-        return $workflow
-            ->step(ExtractClausesAgent::class)
-            ->step(RiskAnalysisAgent::class);
-    }
-}
-```
-
-List it in `config/agent-workflows.php` so **queue workers** know the definition too:
-
-```php
-'workflows' => [
-    App\AgentWorkflows\ContractReview::class,
-],
-```
-
-It registers under the kebab-cased class name (`contract-review`), and you can start it by name or by class.
+- A workflow registers under the kebab-cased class name (`ContractReview` → `contract-review`); override `name()` to choose your own. Runs store this name, so treat it as stable once runs exist.
+- `AgentWorkflow::start()` accepts the class name (`ContractReview::class` — type-safe, refactor-friendly) or the registered string name; both reach the same definition.
 
 ## Deploys and definition drift
 
@@ -546,7 +544,7 @@ Also available: `assertNotStarted()`, `assertNothingStarted()`, `assertStepDidNo
 
 | Key                                                  | What it does                                                                 |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `workflows`                                          | Class-based workflows to register at boot (workers included).               |
+| `workflows`                                          | Your Workflow classes, registered at boot (workers included).               |
 | `queue.connection` / `queue.queue`                   | Route step jobs onto their own connection/queue (recommended with Horizon). |
 | `tables.*`                                           | Rename the package's tables (runs, steps, interrupts, conversation owners). |
 | `definition_drift`                                   | `strict` (refuse to resume a changed definition) or `loose` (by step name). |

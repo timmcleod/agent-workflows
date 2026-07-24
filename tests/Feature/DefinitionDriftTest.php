@@ -7,14 +7,15 @@ use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FlakyStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 
 function startFailedDriftingRun(): WorkflowRun
 {
     FlakyStep::$fail = true;
 
-    AgentWorkflow::define('drifty')
+    defineWorkflow('drifty', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
-        ->step(FlakyStep::class);
+        ->step(FlakyStep::class));
 
     try {
         AgentWorkflow::start('drifty', []);
@@ -25,10 +26,10 @@ function startFailedDriftingRun(): WorkflowRun
     FlakyStep::$fail = false;
 
     // A deploy changes the definition while the run is parked in "failed".
-    AgentWorkflow::define('drifty')
+    defineWorkflow('drifty', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->step(FlakyStep::class)
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 
     return WorkflowRun::sole();
 }

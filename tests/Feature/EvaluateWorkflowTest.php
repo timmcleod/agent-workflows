@@ -5,13 +5,14 @@ use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\RefineStep;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 use TimMcLeod\AgentWorkflows\WorkflowState;
 
 it('loops the evaluate step until the predicate is satisfied', function () {
-    AgentWorkflow::define('refine')
+    defineWorkflow('refine', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->evaluate(RefineStep::class, until: fn (WorkflowState $s) => $s->get('score') >= 7, maxIterations: 5)
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 
     $run = AgentWorkflow::start('refine', []);
 
@@ -25,10 +26,10 @@ it('loops the evaluate step until the predicate is satisfied', function () {
 });
 
 it('stops at maxIterations when the predicate is never satisfied', function () {
-    AgentWorkflow::define('capped')
+    defineWorkflow('capped', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->evaluate(RefineStep::class, until: fn (WorkflowState $s) => $s->get('score') >= 100, maxIterations: 2)
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 
     $run = AgentWorkflow::start('capped', []);
 

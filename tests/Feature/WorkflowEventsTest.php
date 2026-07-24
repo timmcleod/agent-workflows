@@ -9,13 +9,14 @@ use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FlakyStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\TransformStep;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 
 it('fires lifecycle events across a successful run', function () {
     Event::fake([WorkflowStarted::class, StepCompleted::class, WorkflowCompleted::class]);
 
-    AgentWorkflow::define('eventful')
+    defineWorkflow('eventful', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
-        ->step(TransformStep::class);
+        ->step(TransformStep::class));
 
     AgentWorkflow::start('eventful', ['value' => 1]);
 
@@ -29,8 +30,8 @@ it('fires WorkflowFailed when a step fails', function () {
 
     FlakyStep::$fail = true;
 
-    AgentWorkflow::define('doomed')
-        ->step(FlakyStep::class);
+    defineWorkflow('doomed', fn (WorkflowDefinition $workflow) => $workflow
+        ->step(FlakyStep::class));
 
     try {
         AgentWorkflow::start('doomed', []);

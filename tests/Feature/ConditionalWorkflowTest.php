@@ -7,17 +7,18 @@ use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FlakyStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\TransformStep;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 use TimMcLeod\AgentWorkflows\WorkflowState;
 
 beforeEach(function () {
     FlakyStep::$fail = false;
 
-    AgentWorkflow::define('branching')
+    defineWorkflow('branching', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->when(fn (WorkflowState $s) => $s->get('value') > 10,
             then: TransformStep::class,
             else: FinalizeStep::class)
-        ->step(FlakyStep::class);
+        ->step(FlakyStep::class));
 });
 
 it('routes to the then-branch and continues after it', function () {
@@ -40,10 +41,10 @@ it('routes to the else-branch and continues after it', function () {
 });
 
 it('skips ahead when the condition is false and there is no else-branch', function () {
-    AgentWorkflow::define('maybe')
+    defineWorkflow('maybe', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->when(fn (WorkflowState $s) => false, then: TransformStep::class)
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 
     $run = AgentWorkflow::start('maybe', ['value' => 1]);
 
@@ -55,11 +56,11 @@ it('skips ahead when the condition is false and there is no else-branch', functi
 it('gives agent branch targets their prompts via thenPrompt', function () {
     SummarizeAgent::fake(['Escalation note.']);
 
-    AgentWorkflow::define('prompted-branch')
+    defineWorkflow('prompted-branch', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->when(fn () => true,
             then: SummarizeAgent::class,
-            thenPrompt: fn (WorkflowState $s) => 'Escalate: '.implode(',', $s->get('sequence')));
+            thenPrompt: fn (WorkflowState $s) => 'Escalate: '.implode(',', $s->get('sequence'))));
 
     $run = AgentWorkflow::start('prompted-branch', []);
 
@@ -72,9 +73,9 @@ it('gives agent branch targets their prompts via thenPrompt', function () {
 });
 
 it('completes the run when a trailing condition skips', function () {
-    AgentWorkflow::define('trailing')
+    defineWorkflow('trailing', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
-        ->when(fn () => false, then: TransformStep::class);
+        ->when(fn () => false, then: TransformStep::class));
 
     $run = AgentWorkflow::start('trailing', []);
 

@@ -9,16 +9,17 @@ use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FlakyStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\TransformStep;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 
 beforeEach(function () {
     FlakyStep::$fail = false;
 
-    AgentWorkflow::define('five-steps')
+    defineWorkflow('five-steps', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->step(TransformStep::class)
         ->step(TransformStep::class)
         ->step(FlakyStep::class)
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 });
 
 it('retries a failed run from the failed step, not from the beginning', function () {

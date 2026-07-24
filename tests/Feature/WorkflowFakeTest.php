@@ -6,13 +6,14 @@ use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FlakyStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\TransformStep;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 
 it('records lifecycle events for assertions while still executing', function () {
     $fake = AgentWorkflow::fake();
 
-    AgentWorkflow::define('under-test')
+    defineWorkflow('under-test', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
-        ->step(TransformStep::class);
+        ->step(TransformStep::class));
 
     AgentWorkflow::start('under-test', ['value' => 21]);
 
@@ -30,9 +31,9 @@ it('asserts failures', function () {
 
     FlakyStep::$fail = true;
 
-    AgentWorkflow::define('failing')
+    defineWorkflow('failing', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
-        ->step(FlakyStep::class);
+        ->step(FlakyStep::class));
 
     try {
         AgentWorkflow::start('failing', []);
@@ -56,10 +57,10 @@ it('asserts nothing started', function () {
 it('asserts interrupts and resumes', function () {
     $fake = AgentWorkflow::fake();
 
-    AgentWorkflow::define('gated')
+    defineWorkflow('gated', fn (WorkflowDefinition $workflow) => $workflow
         ->step(PrepareStep::class)
         ->awaitHuman(reason: 'Sign-off')
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 
     $run = AgentWorkflow::start('gated', []);
 

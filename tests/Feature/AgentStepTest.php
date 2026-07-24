@@ -7,13 +7,14 @@ use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Agents\RiskAnalysisAgent;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Agents\SummarizeAgent;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 
 it('runs an agent step with a step-level prompt closure', function () {
     SummarizeAgent::fake(['A concise summary.']);
 
-    AgentWorkflow::define('summarize')
+    defineWorkflow('summarize', fn (WorkflowDefinition $workflow) => $workflow
         ->step(SummarizeAgent::class, prompt: fn ($state) => 'Summarize: '.$state->get('doc'))
-        ->step(FinalizeStep::class);
+        ->step(FinalizeStep::class));
 
     $run = AgentWorkflow::start('summarize', ['doc' => 'A very long document.']);
 
@@ -27,8 +28,8 @@ it('runs an agent step with a step-level prompt closure', function () {
 it('runs an agent step with a static string prompt', function () {
     SummarizeAgent::fake(['Done.']);
 
-    AgentWorkflow::define('static-prompt')
-        ->step(SummarizeAgent::class, prompt: 'Summarize the standard weekly report.');
+    defineWorkflow('static-prompt', fn (WorkflowDefinition $workflow) => $workflow
+        ->step(SummarizeAgent::class, prompt: 'Summarize the standard weekly report.'));
 
     $run = AgentWorkflow::start('static-prompt', []);
 
@@ -40,11 +41,11 @@ it('runs an agent step with a static string prompt', function () {
 it('lets the same agent take different prompts in different workflows', function () {
     SummarizeAgent::fake(['One.', 'Two.']);
 
-    AgentWorkflow::define('flow-one')
-        ->step(SummarizeAgent::class, prompt: fn ($s) => 'Summarize the contract: '.$s->get('contract'));
+    defineWorkflow('flow-one', fn (WorkflowDefinition $workflow) => $workflow
+        ->step(SummarizeAgent::class, prompt: fn ($s) => 'Summarize the contract: '.$s->get('contract')));
 
-    AgentWorkflow::define('flow-two')
-        ->step(SummarizeAgent::class, prompt: fn ($s) => 'Summarize the ticket: '.$s->get('ticket'));
+    defineWorkflow('flow-two', fn (WorkflowDefinition $workflow) => $workflow
+        ->step(SummarizeAgent::class, prompt: fn ($s) => 'Summarize the ticket: '.$s->get('ticket')));
 
     AgentWorkflow::start('flow-one', ['contract' => 'C1']);
     AgentWorkflow::start('flow-two', ['ticket' => 'T1']);
@@ -56,8 +57,8 @@ it('lets the same agent take different prompts in different workflows', function
 it('checkpoints structured agent output and records usage on the step audit row', function () {
     RiskAnalysisAgent::fake([['riskScore' => 9]]);
 
-    AgentWorkflow::define('risk')
-        ->step(RiskAnalysisAgent::class);
+    defineWorkflow('risk', fn (WorkflowDefinition $workflow) => $workflow
+        ->step(RiskAnalysisAgent::class));
 
     $run = AgentWorkflow::start('risk', ['prompt' => 'Assess this contract.']);
 
@@ -72,8 +73,8 @@ it('checkpoints structured agent output and records usage on the step audit row'
 it('fails the run when an agent step has no prompt source', function () {
     RiskAnalysisAgent::fake([['riskScore' => 2]]);
 
-    AgentWorkflow::define('promptless')
-        ->step(RiskAnalysisAgent::class);
+    defineWorkflow('promptless', fn (WorkflowDefinition $workflow) => $workflow
+        ->step(RiskAnalysisAgent::class));
 
     try {
         AgentWorkflow::start('promptless', []);
