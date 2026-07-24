@@ -354,12 +354,12 @@ Also available: `assertNotStarted()`, `assertNothingStarted()`, `assertStepDidNo
 
 `config/agent-workflows.php`:
 
-| Key                                                  | What it does                                                                   |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `workflows`                                          | Class-based workflows to register at boot (workers included).                  |
-| `queue.connection` / `queue.queue`                   | Route step jobs onto their own connection/queue (recommended with Horizon).    |
-| `tables.runs` / `tables.steps` / `tables.interrupts` | Rename the package's tables — change before migrating.                         |
-| `definition_drift`                                   | `strict` (refuse to resume a changed definition) or `loose` (by step name).    |
+| Key                                                  | What it does                                                                 |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `workflows`                                          | Class-based workflows to register at boot (workers included).               |
+| `queue.connection` / `queue.queue`                   | Route step jobs onto their own connection/queue (recommended with Horizon). |
+| `tables.runs` / `tables.steps` / `tables.interrupts` | Rename the package's tables before running the migrations.                  |
+| `definition_drift`                                   | `strict` (refuse to resume a changed definition) or `loose` (by step name). |
 
 ## What this package is not
 
