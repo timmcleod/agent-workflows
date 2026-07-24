@@ -34,47 +34,160 @@ php artisan vendor:publish --tag=agent-workflows-config
 php artisan migrate
 ```
 
-## Defining and starting a workflow
+## Quick start: your first workflow, end to end
 
-Define a workflow once (in a service provider's `boot()`), giving each step either a **Laravel AI agent class** or any **invokable class**:
+Let's build a small real feature: when a support ticket comes in, an agent drafts a reply, a human reviews it, and only then does the app send it. Three steps, one of which is "wait for a person," which is exactly what plain PHP can't do.
 
-```php
-use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
+### 1. Write the agent (a normal laravel/ai agent)
 
-AgentWorkflow::define('contract-review')
-    ->start(ExtractClausesAgent::class)
-    ->then(RiskAnalysisAgent::class)
-    ->then(GenerateSummaryAgent::class);
-```
-
-Start a run from anywhere — a controller, a command, a listener:
+Steps that talk to the AI are ordinary SDK agent classes. The only addition is `HasWorkflowPrompt`, which tells the workflow how to build this agent's prompt from the shared state:
 
 ```php
-$run = AgentWorkflow::start('contract-review', input: ['document_id' => $doc->id]);
+// app/Agents/DraftReplyAgent.php
 
-$run->status;        // RunStatus::Pending — steps execute as queued jobs
-$run->id;            // ULID, safe to hand to your frontend for polling
-```
+namespace App\Agents;
 
-Each step runs as one queued job. The job payload carries only IDs — state is loaded fresh from the checkpoint, so a retried step never sees stale data.
-
-### Workflow state
-
-A `WorkflowState` bag flows through the run and is checkpointed to the database after **every** step. Callback steps receive it and mutate it:
-
-```php
+use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Promptable;
+use Stringable;
+use TimMcLeod\AgentWorkflows\Contracts\HasWorkflowPrompt;
 use TimMcLeod\AgentWorkflows\WorkflowState;
 
-class NormalizeDocument
+class DraftReplyAgent implements Agent, HasWorkflowPrompt
 {
-    public function __invoke(WorkflowState $state): WorkflowState
+    use Promptable;
+
+    public function instructions(): Stringable|string
     {
-        return $state->set('document.text', strip_tags($state->get('document.raw')));
+        return 'Draft a friendly, concise support reply.';
+    }
+
+    public function workflowPrompt(WorkflowState $state): string
+    {
+        return 'Draft a reply to this ticket: '.$state->get('ticket_message');
     }
 }
 ```
 
-`get()`/`set()`/`has()`/`forget()` accept dot notation; `merge()` and `all()` work on the whole bag. Everything stored must be JSON-serializable.
+### 2. Write the plain-PHP step
+
+Steps that don't need an AI are just invokable classes. They receive the state bag, do their work, and return it:
+
+```php
+// app/Workflows/SendReply.php
+
+namespace App\Workflows;
+
+use App\Models\Ticket;
+use TimMcLeod\AgentWorkflows\WorkflowState;
+
+class SendReply
+{
+    public function __invoke(WorkflowState $state): WorkflowState
+    {
+        $ticket = Ticket::findOrFail($state->get('ticket_id'));
+
+        // The agent's draft was checkpointed under its step id;
+        // the reviewer's edits arrive via resume() (step 5 below).
+        $ticket->sendReply($state->get('final_reply') ?? $state->get('steps.DraftReplyAgent.text'));
+
+        return $state->set('sent', true);
+    }
+}
+```
+
+### 3. Define the workflow in a service provider
+
+Definitions live in `boot()` because **queue workers need to know them too**. A worker process that picks up step 2 must be able to look up what step 3 is:
+
+```php
+// app/Providers/AppServiceProvider.php
+
+use App\Agents\DraftReplyAgent;
+use App\Workflows\SendReply;
+use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
+
+public function boot(): void
+{
+    AgentWorkflow::define('ticket-reply')
+        ->start(DraftReplyAgent::class)
+        ->awaitHuman(reason: 'Review the drafted reply', schema: [
+            'final_reply' => 'required|string',
+        ])
+        ->then(SendReply::class);
+}
+```
+
+(Prefer a dedicated class per workflow? `php artisan make:agent-workflow TicketReply` — see [Class-based definitions](#class-based-definitions).)
+
+### 4. Start a run from a controller
+
+```php
+// routes/web.php (or a controller)
+
+Route::post('/tickets/{ticket}/draft-reply', function (Ticket $ticket, Request $request) {
+    $run = AgentWorkflow::start('ticket-reply', input: [
+        'ticket_id' => $ticket->id,
+        'ticket_message' => $ticket->message,
+    ], participant: $request->user());
+
+    return ['run_id' => $run->id, 'status' => $run->status];
+});
+```
+
+The response comes back instantly with `status: pending`. **Nothing has executed yet**, and nothing will until a queue worker runs:
+
+```bash
+php artisan queue:work
+```
+
+The worker picks up step 1 as a job, the agent drafts the reply, the checkpoint is saved, and the run parks itself at the `awaitHuman` step with status `awaiting_human`. It will sit there through deploys, restarts, and weekends.
+
+### 5. Show it to the human, then resume
+
+Your review UI reads the run and shows the draft:
+
+```php
+Route::get('/runs/{run}', function (WorkflowRun $run) {
+    return [
+        'status' => $run->status,                              // "awaiting_human"
+        'draft' => $run->state['steps']['DraftReplyAgent']['text'] ?? null,
+        'waiting_for' => $run->interrupts()->whereNull('resolved_at')->value('reason'),
+    ];
+});
+
+Route::post('/runs/{run}/approve', function (WorkflowRun $run, Request $request) {
+    $run = $run->resume([
+        'final_reply' => $request->input('final_reply'),       // validated against the schema
+    ], by: $request->user());
+
+    return ['status' => $run->status];
+});
+```
+
+`resume()` validates the payload against the schema from step 3, merges it into state, and queues the next step. The worker runs `SendReply`, and the run completes.
+
+### 6. When something breaks
+
+Suppose the mail provider was down and `SendReply` threw. The run is now `failed`, with the draft and the reviewer's edits safely checkpointed:
+
+```php
+$run->failed_step;      // "SendReply"
+$run->failure_reason;   // the exception message
+$run->retry();          // re-queues SendReply only; the agent never re-runs, no tokens re-billed
+```
+
+That's the whole loop: agents and plain classes as steps, one `define()` in a provider, `start()` from anywhere, a queue worker doing the work, `resume()` when humans answer, `retry()` when things break. Everything below is detail and more step types.
+
+## Workflow state
+
+The `WorkflowState` bag you saw flowing through the quick start is the package's backbone: it is checkpointed to the database after **every** step, and it's how steps that run minutes or days apart share data. `get()`/`set()`/`has()`/`forget()` accept dot notation; `merge()` and `all()` work on the whole bag. Everything stored must be JSON-serializable.
+
+Three conventions worth knowing:
+
+- Your `start()` input is the initial state.
+- Agent output lands under `steps.{step id}` (`steps.DraftReplyAgent.text`, and `.structured` for schema output).
+- `resume()` and `deliverEvent()` payloads merge into the top level.
 
 ## Method reference
 
