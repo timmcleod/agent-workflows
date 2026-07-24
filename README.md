@@ -19,6 +19,8 @@ This package makes those same patterns **crash-safe** on the substrate Laravel a
 - Laravel 12 or 13
 - `laravel/ai` ^0.10
 
+Want to see it run first? The **[demo app](https://github.com/timmcleod/agent-workflows-demo)** is a complete contract-review pipeline — agents, a simulated outage for the retry demo, a risk-based branch, and human sign-off — driven from four artisan commands.
+
 ## Installation
 
 ```bash
