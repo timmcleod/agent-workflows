@@ -6,9 +6,26 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Carbon;
 use TimMcLeod\AgentWorkflows\Enums\RunStatus;
+use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
+use TimMcLeod\AgentWorkflows\Jobs\WorkflowStepJob;
 use TimMcLeod\AgentWorkflows\WorkflowState;
 
+/**
+ * @property string $id
+ * @property string $name
+ * @property string $version
+ * @property RunStatus $status
+ * @property string|null $current_step
+ * @property array<string, mixed>|null $state
+ * @property string|null $participant_type
+ * @property int|string|null $participant_id
+ * @property string|null $failed_step
+ * @property string|null $failure_reason
+ * @property Carbon|null $started_at
+ * @property Carbon|null $finished_at
+ */
 class WorkflowRun extends Model
 {
     use HasUlids;
@@ -54,5 +71,31 @@ class WorkflowRun extends Model
     public function workflowState(): WorkflowState
     {
         return WorkflowState::make($this->state ?? []);
+    }
+
+    /**
+     * Re-dispatch a failed run from its checkpoint. Only the failed step is
+     * re-executed — every step before it keeps its committed result.
+     */
+    public function retry(): static
+    {
+        if ($this->status !== RunStatus::Failed) {
+            throw new WorkflowException(
+                "Only failed runs can be retried; run [{$this->id}] is [{$this->status->value}]."
+            );
+        }
+
+        $step = $this->failed_step ?? $this->current_step;
+
+        $this->update([
+            'status' => RunStatus::Pending,
+            'failed_step' => null,
+            'failure_reason' => null,
+            'finished_at' => null,
+        ]);
+
+        WorkflowStepJob::dispatch($this->id, $step)->afterCommit();
+
+        return $this->refresh();
     }
 }

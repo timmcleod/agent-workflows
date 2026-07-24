@@ -11,6 +11,7 @@ class AgentWorkflowsServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/agent-workflows.php', 'agent-workflows');
 
         $this->app->singleton(WorkflowRegistry::class);
+        $this->app->singleton(WorkflowManager::class);
     }
 
     public function boot(): void

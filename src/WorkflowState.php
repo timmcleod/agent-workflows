@@ -15,6 +15,8 @@ use JsonSerializable;
  * serializable.
  *
  * @implements Arrayable<string, mixed>
+ *
+ * @phpstan-consistent-constructor
  */
 class WorkflowState implements Arrayable, JsonSerializable
 {
