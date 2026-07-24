@@ -2,8 +2,13 @@
 
 namespace TimMcLeod\AgentWorkflows;
 
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Ai\Events\AgentPrompted;
+use Laravel\Ai\Events\AgentStreamed;
 use TimMcLeod\AgentWorkflows\Console\MakeAgentWorkflowCommand;
+use TimMcLeod\AgentWorkflows\Handoffs\HandoffManager;
+use TimMcLeod\AgentWorkflows\Listeners\RecordHandoffs;
 
 class AgentWorkflowsServiceProvider extends ServiceProvider
 {
@@ -13,11 +18,15 @@ class AgentWorkflowsServiceProvider extends ServiceProvider
 
         $this->app->singleton(WorkflowRegistry::class);
         $this->app->singleton(WorkflowManager::class);
+        $this->app->singleton(HandoffManager::class);
     }
 
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
+        Event::listen(AgentPrompted::class, RecordHandoffs::class);
+        Event::listen(AgentStreamed::class, RecordHandoffs::class);
 
         $this->registerConfiguredWorkflows();
 

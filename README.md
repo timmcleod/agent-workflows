@@ -11,7 +11,7 @@ This package makes those same patterns **crash-safe** on the substrate Laravel a
 - **Interruptible** — `awaitHuman()` parks a run for hours or days; `resume()` validates the human's input and continues. SDK tool-approval pauses surface as workflow interrupts too.
 - **Observable** — every step is a queued job (visible in Horizon), every run and step is a queryable Eloquent record, and lifecycle events fire throughout.
 
-> **Status: pre-release.** The core engine (sequential, conditional, parallel, evaluator steps; checkpoint/retry; interrupts; events; testing fakes) is implemented and tested. Agent handoffs are in development. APIs may change before 1.0.
+> **Status: pre-release.** The core engine (sequential, conditional, parallel, evaluator steps; checkpoint/retry; interrupts; agent handoffs; events; testing fakes) is implemented and tested. APIs may change before 1.0.
 
 ## Requirements
 
@@ -213,6 +213,53 @@ $run->resume(['toolu_1' => true]);     // true / false / Decision::edit([...]) p
 
 The agent must remember conversations (the SDK requires that to pause); decisions are checkpointed before replay, so a crash mid-resume replays them safely on retry.
 
+## Handoffs
+
+Persistent conversation routing between agents — the piece the SDK's sub-agents-as-tools pattern doesn't cover, because sub-agents answer *one* question and return. A handoff transfers *ownership of the whole conversation*, so the customer's next message (an hour or a week later) lands with the right agent.
+
+Declare who an agent may hand off to, and expose the generated `transfer_to_*` tools:
+
+```php
+use TimMcLeod\AgentWorkflows\Concerns\HasHandoffTools;
+use TimMcLeod\AgentWorkflows\Contracts\HasHandoffs;
+
+class TriageAgent implements Agent, HasHandoffs, HasTools, RemembersConversations
+{
+    use HasHandoffTools, Promptable, RemembersConversations;
+
+    public function instructions(): Stringable|string
+    {
+        return 'Triage the customer request and transfer to a specialist when appropriate.';
+    }
+
+    public function handoffs(): array
+    {
+        return [RefundsAgent::class, BillingAgent::class];
+    }
+
+    public function tools(): iterable
+    {
+        return [...$this->handoffTools(), new LookupOrderTool];
+    }
+}
+```
+
+The agent now sees `transfer_to_refunds_agent` and `transfer_to_billing_agent` tools (a target can customize its pitch with a `handoffDescription()` method). When the model calls one, the package records the target as the conversation's owner — no SDK changes, just an event listener watching for the synthetic tool calls.
+
+On the next user turn, route to whoever owns the conversation:
+
+```php
+$agent = AgentWorkflow::resolveAgentFor($conversationId, default: TriageAgent::class);
+
+$response = $agent->continue($conversationId, $user)->prompt($request->input('message'));
+```
+
+Transfers can also be made manually (an operator reassigning a conversation), and every transfer fires `ConversationTransferred` with the old and new owner:
+
+```php
+AgentWorkflow::transferConversation($conversationId, RefundsAgent::class);
+```
+
 ## Agent steps
 
 Any `laravel/ai` agent class can be a step. The step needs a prompt — either implement `HasWorkflowPrompt` to build it from state:
@@ -358,7 +405,7 @@ Also available: `assertNotStarted()`, `assertNothingStarted()`, `assertStepDidNo
 | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `workflows`                                          | Class-based workflows to register at boot (workers included).               |
 | `queue.connection` / `queue.queue`                   | Route step jobs onto their own connection/queue (recommended with Horizon). |
-| `tables.runs` / `tables.steps` / `tables.interrupts` | Rename the package's tables before running the migrations.                  |
+| `tables.*`                                           | Rename the package's tables (runs, steps, interrupts, conversation owners). |
 | `definition_drift`                                   | `strict` (refuse to resume a changed definition) or `loose` (by step name). |
 
 ## What this package is not

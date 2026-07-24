@@ -1,7 +1,5 @@
 <?php
 
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use TimMcLeod\AgentWorkflows\Enums\InterruptType;
 use TimMcLeod\AgentWorkflows\Enums\RunStatus;
@@ -50,12 +48,6 @@ it('validates the resume payload against the schema', function () {
 });
 
 it('resumes with a validated payload, merging it into state', function () {
-    Schema::create('test_users', function (Blueprint $table) {
-        $table->id();
-        $table->string('name');
-        $table->timestamps();
-    });
-
     $user = TestUser::create(['name' => 'Tim']);
 
     $run = AgentWorkflow::start('signoff', []);

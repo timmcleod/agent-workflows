@@ -22,6 +22,8 @@ abstract class TestCase extends Orchestra
     {
         $app['config']->set('queue.default', 'sync');
         $app['config']->set('concurrency.default', 'sync');
+        // Conversation titles would trigger an unfaked LLM call per conversation.
+        $app['config']->set('ai.conversations.generate_title', false);
         $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', [
             'driver' => 'sqlite',
@@ -33,6 +35,17 @@ abstract class TestCase extends Orchestra
     protected function defineDatabaseMigrations(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
+        // The SDK's conversation tables, for RemembersConversations agents.
+        $this->loadMigrationsFrom(__DIR__.'/../vendor/laravel/ai/database/migrations');
+
+        if (! Schema::hasTable('test_users')) {
+            Schema::create('test_users', function (Blueprint $table) {
+                $table->id();
+                $table->string('name');
+                $table->timestamps();
+            });
+        }
 
         // For tests that exercise the real queued path via the database driver.
         if (! Schema::hasTable('jobs')) {

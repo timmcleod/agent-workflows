@@ -2,14 +2,41 @@
 
 namespace TimMcLeod\AgentWorkflows;
 
+use Laravel\Ai\Contracts\Agent;
 use TimMcLeod\AgentWorkflows\Enums\RunStatus;
 use TimMcLeod\AgentWorkflows\Events\WorkflowStarted;
+use TimMcLeod\AgentWorkflows\Handoffs\HandoffManager;
 use TimMcLeod\AgentWorkflows\Jobs\WorkflowStepJob;
+use TimMcLeod\AgentWorkflows\Models\ConversationOwner;
 use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
 
 class WorkflowManager
 {
-    public function __construct(protected WorkflowRegistry $registry) {}
+    public function __construct(
+        protected WorkflowRegistry $registry,
+        protected HandoffManager $handoffs,
+    ) {}
+
+    /**
+     * The agent that should handle the conversation's next turn: its
+     * recorded owner (after a handoff), or the given default.
+     *
+     * @param  class-string<Agent>|null  $default
+     */
+    public function resolveAgentFor(string $conversationId, ?string $default = null): Agent
+    {
+        return $this->handoffs->resolveAgentFor($conversationId, $default);
+    }
+
+    /**
+     * Manually transfer a conversation to another agent.
+     *
+     * @param  class-string<Agent>  $agent
+     */
+    public function transferConversation(string $conversationId, string $agent): ConversationOwner
+    {
+        return $this->handoffs->transfer($conversationId, $agent);
+    }
 
     /**
      * Define (and register) a named workflow.
