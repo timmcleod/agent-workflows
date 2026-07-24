@@ -1,9 +1,8 @@
 /vendor
 /composer.lock
 
-# Private working notes — only the published docs page is tracked.
-/docs/*
-!/docs/five-patterns-made-durable.md
+# Private working notes.
+/docs/.internal
 /.phpunit.cache
 /.idea
 /.vscode
