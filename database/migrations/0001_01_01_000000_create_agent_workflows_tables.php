@@ -8,7 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('agent_workflow_runs', function (Blueprint $table) {
+        $runs = config('agent-workflows.tables.runs', 'agent_workflow_runs');
+        $steps = config('agent-workflows.tables.steps', 'agent_workflow_steps');
+        $interrupts = config('agent-workflows.tables.interrupts', 'agent_workflow_interrupts');
+
+        Schema::create($runs, function (Blueprint $table) {
             $table->ulid('id')->primary();
             $table->string('name')->index();
             $table->string('version', 64);
@@ -23,9 +27,9 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        Schema::create('agent_workflow_steps', function (Blueprint $table) {
+        Schema::create($steps, function (Blueprint $table) use ($runs) {
             $table->id();
-            $table->foreignUlid('run_id')->constrained('agent_workflow_runs')->cascadeOnDelete();
+            $table->foreignUlid('run_id')->constrained($runs)->cascadeOnDelete();
             $table->string('step_id');
             $table->string('type');
             $table->string('status');
@@ -41,9 +45,9 @@ return new class extends Migration
             $table->index(['run_id', 'step_id']);
         });
 
-        Schema::create('agent_workflow_interrupts', function (Blueprint $table) {
+        Schema::create($interrupts, function (Blueprint $table) use ($runs) {
             $table->id();
-            $table->foreignUlid('run_id')->constrained('agent_workflow_runs')->cascadeOnDelete();
+            $table->foreignUlid('run_id')->constrained($runs)->cascadeOnDelete();
             $table->string('step_id');
             $table->text('reason')->nullable();
             $table->json('response_schema')->nullable();
@@ -56,8 +60,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('agent_workflow_interrupts');
-        Schema::dropIfExists('agent_workflow_steps');
-        Schema::dropIfExists('agent_workflow_runs');
+        Schema::dropIfExists(config('agent-workflows.tables.interrupts', 'agent_workflow_interrupts'));
+        Schema::dropIfExists(config('agent-workflows.tables.steps', 'agent_workflow_steps'));
+        Schema::dropIfExists(config('agent-workflows.tables.runs', 'agent_workflow_runs'));
     }
 };

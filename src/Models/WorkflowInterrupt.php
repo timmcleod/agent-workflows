@@ -20,9 +20,12 @@ use Illuminate\Support\Carbon;
  */
 class WorkflowInterrupt extends Model
 {
-    protected $table = 'agent_workflow_interrupts';
-
     protected $guarded = [];
+
+    public function getTable(): string
+    {
+        return config('agent-workflows.tables.interrupts', 'agent_workflow_interrupts');
+    }
 
     protected function casts(): array
     {

@@ -30,9 +30,12 @@ class WorkflowRun extends Model
 {
     use HasUlids;
 
-    protected $table = 'agent_workflow_runs';
-
     protected $guarded = [];
+
+    public function getTable(): string
+    {
+        return config('agent-workflows.tables.runs', 'agent_workflow_runs');
+    }
 
     protected function casts(): array
     {

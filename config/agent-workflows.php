@@ -21,6 +21,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Database Tables
+    |--------------------------------------------------------------------------
+    |
+    | The tables used to store workflow runs, the per-step audit log, and
+    | pending interrupts. Change these before running the migrations if the
+    | defaults collide with tables in your application.
+    |
+    */
+
+    'tables' => [
+        'runs' => 'agent_workflow_runs',
+        'steps' => 'agent_workflow_steps',
+        'interrupts' => 'agent_workflow_interrupts',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Definition Drift
     |--------------------------------------------------------------------------
     |

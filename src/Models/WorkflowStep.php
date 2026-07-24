@@ -24,9 +24,12 @@ use TimMcLeod\AgentWorkflows\Enums\StepType;
  */
 class WorkflowStep extends Model
 {
-    protected $table = 'agent_workflow_steps';
-
     protected $guarded = [];
+
+    public function getTable(): string
+    {
+        return config('agent-workflows.tables.steps', 'agent_workflow_steps');
+    }
 
     protected function casts(): array
     {
