@@ -23,11 +23,16 @@ class WorkflowDefinition
      * steps; any other invokable class becomes a callback step. Steps run
      * in the order they are added.
      *
+     * Agent steps take their prompt from $prompt (a closure receiving the
+     * workflow state, or a plain string); without one, the state's "prompt"
+     * key is used.
+     *
      * @param  class-string  $target
+     * @param  Closure(WorkflowState): string|string|null  $prompt
      */
-    public function step(string $target, ?string $as = null): static
+    public function step(string $target, ?string $as = null, Closure|string|null $prompt = null): static
     {
-        $this->steps[] = $this->makeStep($target, $as);
+        $this->steps[] = $this->makeStep($target, $as, $prompt);
 
         return $this;
     }
@@ -35,16 +40,25 @@ class WorkflowDefinition
     /**
      * Branch at runtime: when the condition holds, run $then, otherwise run
      * $else (or skip straight to the next step when $else is omitted). The
-     * workflow continues sequentially after whichever branch ran.
+     * workflow continues sequentially after whichever branch ran. Agent
+     * branch targets take their prompts from $thenPrompt / $elsePrompt.
      *
      * @param  Closure(WorkflowState): bool  $condition
      * @param  class-string  $then
      * @param  class-string|null  $else
+     * @param  Closure(WorkflowState): string|string|null  $thenPrompt
+     * @param  Closure(WorkflowState): string|string|null  $elsePrompt
      */
-    public function when(Closure $condition, string $then, ?string $else = null, ?string $as = null): static
-    {
-        $whenTrue = $this->makeStep($then);
-        $whenFalse = $else !== null ? $this->makeStep($else) : null;
+    public function when(
+        Closure $condition,
+        string $then,
+        ?string $else = null,
+        ?string $as = null,
+        Closure|string|null $thenPrompt = null,
+        Closure|string|null $elsePrompt = null,
+    ): static {
+        $whenTrue = $this->makeStep($then, null, $thenPrompt);
+        $whenFalse = $else !== null ? $this->makeStep($else, null, $elsePrompt) : null;
 
         $this->steps[] = new ConditionStepDefinition(
             $this->stepId($as ?? 'when:'.(count($this->steps) + 1)),
@@ -94,13 +108,20 @@ class WorkflowDefinition
 
     /**
      * Evaluator-optimizer loop: run the target repeatedly until the predicate
-     * holds (or maxIterations is reached), checkpointing every iteration.
+     * holds (or maxIterations is reached), checkpointing every iteration. An
+     * agent target takes its per-iteration prompt from $prompt.
      *
      * @param  class-string  $target
      * @param  Closure(WorkflowState): bool  $until
+     * @param  Closure(WorkflowState): string|string|null  $prompt
      */
-    public function evaluate(string $target, Closure $until, int $maxIterations = 3, ?string $as = null): static
-    {
+    public function evaluate(
+        string $target,
+        Closure $until,
+        int $maxIterations = 3,
+        ?string $as = null,
+        Closure|string|null $prompt = null,
+    ): static {
         if ($maxIterations < 1) {
             throw new InvalidArgumentException('maxIterations must be at least 1.');
         }
@@ -108,7 +129,7 @@ class WorkflowDefinition
         $id = $this->stepId($as ?? 'evaluate:'.class_basename($target));
 
         // The body deliberately shares the evaluate step's id (see EvaluateStepDefinition).
-        $body = new StepDefinition($id, $this->typeFor($target), $target);
+        $body = new StepDefinition($id, $this->typeFor($target), $target, $prompt);
 
         $this->steps[] = new EvaluateStepDefinition($id, $body, $until, $maxIterations);
 
@@ -229,10 +250,11 @@ class WorkflowDefinition
 
     /**
      * @param  class-string  $target
+     * @param  Closure(WorkflowState): string|string|null  $prompt
      */
-    protected function makeStep(string $target, ?string $as = null): StepDefinition
+    protected function makeStep(string $target, ?string $as = null, Closure|string|null $prompt = null): StepDefinition
     {
-        return new StepDefinition($this->stepId($as ?? $target), $this->typeFor($target), $target);
+        return new StepDefinition($this->stepId($as ?? $target), $this->typeFor($target), $target, $prompt);
     }
 
     /**

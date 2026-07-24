@@ -2,9 +2,9 @@
 
 namespace TimMcLeod\AgentWorkflows\Steps;
 
+use Closure;
 use Illuminate\Contracts\Container\Container;
 use Laravel\Ai\Contracts\Agent;
-use TimMcLeod\AgentWorkflows\Contracts\HasWorkflowPrompt;
 use TimMcLeod\AgentWorkflows\Enums\InterruptType;
 use TimMcLeod\AgentWorkflows\Exceptions\MissingWorkflowPromptException;
 use TimMcLeod\AgentWorkflows\Interrupts\PendingInterrupt;
@@ -71,16 +71,16 @@ class AgentStepExecutor implements StepExecutor
 
     protected function promptFor(Agent $agent, StepDefinition $step, WorkflowState $state): string
     {
-        if ($agent instanceof HasWorkflowPrompt) {
-            return $agent->workflowPrompt($state);
-        }
-
-        $prompt = $state->get('prompt');
+        $prompt = match (true) {
+            $step->prompt instanceof Closure => ($step->prompt)($state),
+            is_string($step->prompt) => $step->prompt,
+            default => $state->get('prompt'),
+        };
 
         if (! is_string($prompt) || $prompt === '') {
             throw new MissingWorkflowPromptException(
-                "Agent step [{$step->id}] needs a prompt: implement ".HasWorkflowPrompt::class.
-                " on [{$step->target}] or provide a string under the state's \"prompt\" key."
+                "Agent step [{$step->id}] needs a prompt: pass prompt: when defining the step, ".
+                'or provide a string under the state\'s "prompt" key.'
             );
         }
 

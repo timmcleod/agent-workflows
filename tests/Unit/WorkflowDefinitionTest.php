@@ -27,6 +27,13 @@ it('walks steps sequentially via after()', function () {
         ->and(fn () => $definition->after('Nope'))->toThrow(WorkflowException::class);
 });
 
+it('includes string prompts in the definition hash', function () {
+    $one = (new WorkflowDefinition('p'))->step(SummarizeAgent::class, prompt: 'Summarize A.');
+    $changed = (new WorkflowDefinition('p'))->step(SummarizeAgent::class, prompt: 'Summarize B.');
+
+    expect($one->hash())->not->toBe($changed->hash());
+});
+
 it('changes its hash when the definition changes', function () {
     $one = (new WorkflowDefinition('h'))->step(PrepareStep::class);
     $same = (new WorkflowDefinition('h'))->step(PrepareStep::class);

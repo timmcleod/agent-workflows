@@ -40,7 +40,7 @@ Let's build a small real feature: when a support ticket comes in, an agent draft
 
 ### 1. Write the agent (a normal laravel/ai agent)
 
-Steps that talk to the AI are ordinary SDK agent classes. The only addition is `HasWorkflowPrompt`, which tells the workflow how to build this agent's prompt from the shared state:
+Steps that talk to the AI are ordinary SDK agent classes — nothing package-specific on them. The agent owns *how it behaves*; the workflow will decide *what to ask it* (step 3):
 
 ```php
 // app/Agents/DraftReplyAgent.php
@@ -50,21 +50,14 @@ namespace App\Agents;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Promptable;
 use Stringable;
-use TimMcLeod\AgentWorkflows\Contracts\HasWorkflowPrompt;
-use TimMcLeod\AgentWorkflows\WorkflowState;
 
-class DraftReplyAgent implements Agent, HasWorkflowPrompt
+class DraftReplyAgent implements Agent
 {
     use Promptable;
 
     public function instructions(): Stringable|string
     {
         return 'Draft a friendly, concise support reply.';
-    }
-
-    public function workflowPrompt(WorkflowState $state): string
-    {
-        return 'Draft a reply to this ticket: '.$state->get('ticket_message');
     }
 }
 ```
@@ -110,13 +103,16 @@ use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
 public function boot(): void
 {
     AgentWorkflow::define('ticket-reply')
-        ->step(DraftReplyAgent::class)
+        ->step(DraftReplyAgent::class,
+            prompt: fn ($state) => 'Draft a reply to this ticket: '.$state->get('ticket_message'))
         ->awaitHuman(reason: 'Review the drafted reply', schema: [
             'final_reply' => 'required|string',
         ])
         ->step(SendReply::class);
 }
 ```
+
+The `prompt:` closure receives the workflow state, so the same agent can be reused across workflows with a different prompt in each. A plain string works for static prompts.
 
 (Prefer a dedicated class per workflow? `php artisan make:agent-workflow TicketReply` — see [Class-based definitions](#class-based-definitions).)
 
@@ -209,7 +205,7 @@ All builder methods append a step and return the builder, so they chain. Every s
 
 | Method | What it does | When to use it |
 | --- | --- | --- |
-| `step($target)` | Adds a step that runs a unit of work, in the order added. Each runs after the previous step's state is committed. | The default. `$target` is an SDK agent class (agent step) or any invokable class (callback step) — the builder tells them apart. If in doubt, it's `step()`. |
+| `step($target, prompt:)` | Adds a step that runs a unit of work, in the order added. Each runs after the previous step's state is committed. For agent steps, `prompt:` (closure over state, or string) is what the agent gets asked. | The default. `$target` is an SDK agent class (agent step) or any invokable class (callback step) — the builder tells them apart. If in doubt, it's `step()`. |
 | `when($condition, then:, else:)` | Evaluates the closure against checkpointed state at runtime and runs one branch (or skips ahead if `else:` is omitted and the condition is false). Continues sequentially afterward; records the decision in `steps.{id}.branch`. | A fork in the road *within* a run: escalate vs auto-approve, premium vs standard handling. For routing whole conversations between agents across turns, use [handoffs](#handoffs) instead. |
 | `parallel([$a, $b], merge:, mode:)` | Fans out into concurrent branches from one state snapshot, then merges and continues. Default `mode: 'batch'` is a queued `Bus::batch`; `mode: 'sync'` runs in-process. | Independent work whose results you need together (analyze financials + legal + news, then synthesize). Not for steps that depend on each other — that's a chain. Provide `merge:` when branches may write the same keys. |
 | `evaluate($target, until:, maxIterations:)` | Runs `$target` repeatedly until the predicate on state passes or the cap is hit, checkpointing each iteration. Records `iteration` and `satisfied` under `steps.{id}`. | Generate-critique-revise loops where quality is judged by a predicate (usually over a critic agent's structured output). Always set a realistic `maxIterations` — it's your token budget. |
@@ -421,31 +417,19 @@ AgentWorkflow::transferConversation($conversationId, RefundsAgent::class);
 
 ## Agent steps
 
-Any `laravel/ai` agent class can be a step. The step needs a prompt — either implement `HasWorkflowPrompt` to build it from state:
+Any `laravel/ai` agent class can be a step — agents stay plain SDK classes with no package-specific code on them. The step's prompt is defined where the step is, so the same agent can be asked different things in different workflows:
 
 ```php
-use Laravel\Ai\Contracts\Agent;
-use Laravel\Ai\Promptable;
-use TimMcLeod\AgentWorkflows\Contracts\HasWorkflowPrompt;
-use TimMcLeod\AgentWorkflows\WorkflowState;
-
-class RiskAnalysisAgent implements Agent, HasWorkflowPrompt
-{
-    use Promptable;
-
-    public function instructions(): string
-    {
-        return 'Analyze the risk of the given contract.';
-    }
-
-    public function workflowPrompt(WorkflowState $state): string
-    {
-        return 'Analyze: '.$state->get('document.text');
-    }
-}
+AgentWorkflow::define('contract-review')
+    ->step(ExtractClausesAgent::class,
+        prompt: fn (WorkflowState $s) => 'Extract the key clauses: '.$s->get('document.text'))
+    ->step(RiskAnalysisAgent::class,
+        prompt: fn (WorkflowState $s) => 'Assess the risk of: '.$s->get('steps.ExtractClausesAgent.text'));
 ```
 
-…or put a string under the state's `prompt` key and the agent will use that.
+`prompt:` takes a closure receiving the state, or a plain string for static prompts. If a step has no `prompt:`, the state's `prompt` key is used — handy for chat-shaped runs where the input *is* the prompt.
+
+Agent targets in other step types carry prompts too: `when(..., thenPrompt:, elsePrompt:)` for branches, and `evaluate(..., prompt:)` for the loop body.
 
 After the step runs, its output is checkpointed under `steps.{step id}`:
 

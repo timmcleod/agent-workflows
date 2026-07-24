@@ -2,6 +2,7 @@
 
 use TimMcLeod\AgentWorkflows\Enums\RunStatus;
 use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
+use TimMcLeod\AgentWorkflows\Tests\Fixtures\Agents\SummarizeAgent;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FlakyStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
@@ -49,6 +50,25 @@ it('skips ahead when the condition is false and there is no else-branch', functi
     expect($run->status)->toBe(RunStatus::Completed)
         ->and($run->state['sequence'])->toBe(['prepare', 'finalize'])
         ->and($run->state['steps']['when:2']['branch'])->toBe('skipped');
+});
+
+it('gives agent branch targets their prompts via thenPrompt', function () {
+    SummarizeAgent::fake(['Escalation note.']);
+
+    AgentWorkflow::define('prompted-branch')
+        ->step(PrepareStep::class)
+        ->when(fn () => true,
+            then: SummarizeAgent::class,
+            thenPrompt: fn (WorkflowState $s) => 'Escalate: '.implode(',', $s->get('sequence')));
+
+    $run = AgentWorkflow::start('prompted-branch', []);
+
+    expect($run->status)->toBe(RunStatus::Completed)
+        ->and($run->state['steps']['SummarizeAgent']['text'])->toBe('Escalation note.');
+
+    SummarizeAgent::assertPrompted(
+        fn ($p) => (string) $p->prompt === 'Escalate: prepare'
+    );
 });
 
 it('completes the run when a trailing condition skips', function () {

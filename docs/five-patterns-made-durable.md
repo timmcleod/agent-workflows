@@ -14,11 +14,14 @@ This page rewrites each official example with checkpoints, retry, and resume. Sa
 
 ```php
 AgentWorkflow::define('content-pipeline')
-    ->step(OutlineAgent::class)
-    ->step(DraftAgent::class)
-    ->step(PolishAgent::class);
+    ->step(OutlineAgent::class,
+        prompt: fn ($s) => 'Outline an article about: '.$s->get('brief'))
+    ->step(DraftAgent::class,
+        prompt: fn ($s) => 'Write the article: '.$s->get('steps.OutlineAgent.text'))
+    ->step(PolishAgent::class,
+        prompt: fn ($s) => 'Polish this draft: '.$s->get('steps.DraftAgent.text'));
 
-$run = AgentWorkflow::start('content-pipeline', input: ['prompt' => $brief]);
+$run = AgentWorkflow::start('content-pipeline', input: ['brief' => $brief]);
 ```
 
 Each step is a queued job, and state is committed after every step. When `PolishAgent` fails:
