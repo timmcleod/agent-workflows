@@ -108,23 +108,26 @@ use App\Agents\DraftReplyAgent;
 use App\Workflows\SendReply;
 use TimMcLeod\AgentWorkflows\Workflow;
 use TimMcLeod\AgentWorkflows\WorkflowDefinition;
+use TimMcLeod\AgentWorkflows\WorkflowState;
 
 class TicketReply extends Workflow
 {
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->step(DraftReplyAgent::class,
-                prompt: fn ($state) => 'Draft a reply to this ticket: '.$state->get('ticket_message'))
-            ->awaitHuman(reason: 'Review the drafted reply', schema: [
-                'final_reply' => 'required|string',
-            ])
+            ->step(DraftReplyAgent::class, prompt: $this->draftPrompt(...))
+            ->awaitHuman(reason: 'Review the drafted reply', schema: ['final_reply' => 'required|string'])
             ->step(SendReply::class);
+    }
+
+    protected function draftPrompt(WorkflowState $state): string
+    {
+        return 'Draft a reply to this ticket: '.$state->get('ticket_message');
     }
 }
 ```
 
-The `prompt:` closure receives the workflow state, so the same agent can be reused across workflows with a different prompt in each. A plain string works for static prompts.
+`build()` stays a skimmable table of contents; each agent's prompt is a named method receiving the workflow state, so the same agent can be asked different things in different workflows (an inline `fn ($state) => ...` or a plain string works too — see [Agent steps](#agent-steps)).
 
 Then list the class in `config/agent-workflows.php` — this is how **queue workers** learn the definition (a worker picking up step 2 must be able to look up what step 3 is, so definitions are registered at boot on every process):
 
@@ -451,7 +454,7 @@ return $workflow
         prompt: fn (WorkflowState $s) => 'Assess the risk of: '.$s->get('steps.ExtractClausesAgent.text'));
 ```
 
-`prompt:` takes a closure receiving the state, or a plain string for static prompts. If a step has no `prompt:`, the state's `prompt` key is used — handy for chat-shaped runs where the input *is* the prompt.
+`prompt:` takes any closure receiving the state — an inline `fn` as above, or a first-class callable to a method on your workflow class (`prompt: $this->riskPrompt(...)`), which keeps `build()` skimmable when prompts run long. A plain string works for static prompts. If a step has no `prompt:`, the state's `prompt` key is used — handy for chat-shaped runs where the input *is* the prompt.
 
 Agent targets in other step types carry prompts too: `when(..., thenPrompt:, elsePrompt:)` for branches, and `evaluate(..., prompt:)` for the loop body.
 
