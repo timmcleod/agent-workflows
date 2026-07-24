@@ -49,8 +49,10 @@ return new class extends Migration
             $table->id();
             $table->foreignUlid('run_id')->constrained($runs)->cascadeOnDelete();
             $table->string('step_id');
+            $table->string('type')->default('human');
             $table->text('reason')->nullable();
             $table->json('response_schema')->nullable();
+            $table->json('context')->nullable();
             $table->nullableMorphs('resolved_by');
             $table->json('resolution')->nullable();
             $table->timestamp('resolved_at')->nullable();

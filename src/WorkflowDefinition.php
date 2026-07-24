@@ -125,6 +125,39 @@ class WorkflowDefinition
     }
 
     /**
+     * Pause the run until a human resumes it. The run is persisted as
+     * awaiting_human with the reason and an optional response schema
+     * (Laravel validation rules); resume() validates the human's payload
+     * against the schema and merges it into state.
+     *
+     * @param  array<string, mixed>|null  $schema
+     */
+    public function awaitHuman(?string $reason = null, ?array $schema = null, ?string $as = null): static
+    {
+        $this->steps[] = new AwaitHumanStepDefinition(
+            $this->stepId($as ?? 'await-human:'.(count($this->steps) + 1)),
+            $reason,
+            $schema,
+        );
+
+        return $this;
+    }
+
+    /**
+     * Pause the run until a named application event is delivered via
+     * $run->deliverEvent($event, $payload).
+     */
+    public function awaitEvent(string $event, ?string $as = null): static
+    {
+        $this->steps[] = new AwaitEventStepDefinition(
+            $this->stepId($as ?? 'await-event:'.$event),
+            $event,
+        );
+
+        return $this;
+    }
+
+    /**
      * @return array<int, StepDefinition>
      */
     public function steps(): array

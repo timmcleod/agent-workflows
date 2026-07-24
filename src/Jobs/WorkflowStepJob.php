@@ -11,16 +11,21 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\Log;
 use Throwable;
+use TimMcLeod\AgentWorkflows\AwaitEventStepDefinition;
+use TimMcLeod\AgentWorkflows\AwaitHumanStepDefinition;
 use TimMcLeod\AgentWorkflows\ConditionStepDefinition;
+use TimMcLeod\AgentWorkflows\Enums\InterruptType;
 use TimMcLeod\AgentWorkflows\Enums\RunStatus;
 use TimMcLeod\AgentWorkflows\Enums\StepStatus;
 use TimMcLeod\AgentWorkflows\EvaluateStepDefinition;
 use TimMcLeod\AgentWorkflows\Events\WorkflowFailed;
 use TimMcLeod\AgentWorkflows\Exceptions\DefinitionDriftException;
+use TimMcLeod\AgentWorkflows\Interrupts\PendingInterrupt;
 use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
 use TimMcLeod\AgentWorkflows\Models\WorkflowStep;
 use TimMcLeod\AgentWorkflows\ParallelStepDefinition;
 use TimMcLeod\AgentWorkflows\Runtime\BranchRunner;
+use TimMcLeod\AgentWorkflows\Runtime\Interrupter;
 use TimMcLeod\AgentWorkflows\Runtime\ParallelStepCompleter;
 use TimMcLeod\AgentWorkflows\Runtime\Progression;
 use TimMcLeod\AgentWorkflows\Runtime\StateMerger;
@@ -73,6 +78,8 @@ class WorkflowStepJob implements ShouldQueue
             $step instanceof ConditionStepDefinition => $this->runCondition($run, $definition, $step, $state, $stepRow),
             $step instanceof ParallelStepDefinition => $this->runParallel($run, $definition, $step, $state, $stepRow),
             $step instanceof EvaluateStepDefinition => $this->runEvaluate($run, $definition, $step, $state, $stepRow),
+            $step instanceof AwaitHumanStepDefinition,
+            $step instanceof AwaitEventStepDefinition => $this->runAwait($run, $definition, $step, $state, $stepRow),
             default => $this->runSimple($run, $definition, $step, $state, $stepRow),
         };
     }
@@ -125,7 +132,40 @@ class WorkflowStepJob implements ShouldQueue
     ): void {
         $result = $this->attempt($stepRow, fn () => app(StepExecutors::class)->for($step)->execute($step, $state));
 
+        // An agent step may ask to park the run (e.g. the SDK paused on tool
+        // approvals) instead of completing.
+        if ($result->interrupt !== null) {
+            app(Interrupter::class)->interrupt($run, $step, $stepRow, $result->state, $result->interrupt);
+
+            return;
+        }
+
         app(Progression::class)->complete($run, $definition, $step, $stepRow, $result->state, $result->usage);
+    }
+
+    protected function runAwait(
+        WorkflowRun $run,
+        WorkflowDefinition $definition,
+        AwaitHumanStepDefinition|AwaitEventStepDefinition $step,
+        WorkflowState $state,
+        WorkflowStep $stepRow,
+    ): void {
+        $open = $run->interrupts()->where('step_id', $step->id)->whereNull('resolved_at')->latest('id')->first();
+        $resolved = $run->interrupts()->where('step_id', $step->id)->whereNotNull('resolved_at')->latest('id')->first();
+
+        // Dispatched by resume()/deliverEvent(): the response is already
+        // merged into state — complete the await step and move on.
+        if ($open === null && $resolved !== null) {
+            app(Progression::class)->complete($run, $definition, $step, $stepRow, $state);
+
+            return;
+        }
+
+        $pending = $step instanceof AwaitHumanStepDefinition
+            ? new PendingInterrupt(InterruptType::Human, $step->reason, $step->schema)
+            : new PendingInterrupt(InterruptType::Event, "Waiting for event [{$step->event}].", context: ['event' => $step->event]);
+
+        app(Interrupter::class)->interrupt($run, $step, $stepRow, $state, $pending);
     }
 
     protected function runCondition(

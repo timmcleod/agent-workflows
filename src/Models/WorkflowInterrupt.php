@@ -6,13 +6,16 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Carbon;
+use TimMcLeod\AgentWorkflows\Enums\InterruptType;
 
 /**
  * @property int $id
  * @property string $run_id
  * @property string $step_id
+ * @property InterruptType $type
  * @property string|null $reason
  * @property array<string, mixed>|null $response_schema
+ * @property array<string, mixed>|null $context
  * @property string|null $resolved_by_type
  * @property int|string|null $resolved_by_id
  * @property array<string, mixed>|null $resolution
@@ -30,10 +33,17 @@ class WorkflowInterrupt extends Model
     protected function casts(): array
     {
         return [
+            'type' => InterruptType::class,
             'response_schema' => 'array',
+            'context' => 'array',
             'resolution' => 'array',
             'resolved_at' => 'datetime',
         ];
+    }
+
+    public function isResolved(): bool
+    {
+        return $this->resolved_at !== null;
     }
 
     /**

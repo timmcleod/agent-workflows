@@ -52,3 +52,21 @@ it('asserts nothing started', function () {
 
     $fake->assertNothingStarted();
 });
+
+it('asserts interrupts and resumes', function () {
+    $fake = AgentWorkflow::fake();
+
+    AgentWorkflow::define('gated')
+        ->start(PrepareStep::class)
+        ->awaitHuman(reason: 'Sign-off')
+        ->then(FinalizeStep::class);
+
+    $run = AgentWorkflow::start('gated', []);
+
+    $fake->assertInterrupted('gated', reason: 'Sign-off');
+
+    $run->resume(['ok' => true]);
+
+    $fake->assertResumed('gated');
+    $fake->assertCompleted('gated');
+});

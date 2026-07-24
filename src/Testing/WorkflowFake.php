@@ -8,6 +8,8 @@ use PHPUnit\Framework\Assert as PHPUnit;
 use TimMcLeod\AgentWorkflows\Events\StepCompleted;
 use TimMcLeod\AgentWorkflows\Events\WorkflowCompleted;
 use TimMcLeod\AgentWorkflows\Events\WorkflowFailed;
+use TimMcLeod\AgentWorkflows\Events\WorkflowInterrupted;
+use TimMcLeod\AgentWorkflows\Events\WorkflowResumed;
 use TimMcLeod\AgentWorkflows\Events\WorkflowStarted;
 use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
 use TimMcLeod\AgentWorkflows\WorkflowManager;
@@ -31,6 +33,12 @@ class WorkflowFake extends WorkflowManager
     /** @var array<int, WorkflowFailed> */
     protected array $failed = [];
 
+    /** @var array<int, WorkflowInterrupted> */
+    protected array $interrupted = [];
+
+    /** @var array<int, WorkflowResumed> */
+    protected array $resumed = [];
+
     public function subscribe(): void
     {
         // The run model is cloned so assertions see its state at event time,
@@ -39,6 +47,8 @@ class WorkflowFake extends WorkflowManager
         Event::listen(StepCompleted::class, fn (StepCompleted $e) => $this->stepsCompleted[] = $e);
         Event::listen(WorkflowCompleted::class, fn (WorkflowCompleted $e) => $this->completed[] = $e);
         Event::listen(WorkflowFailed::class, fn (WorkflowFailed $e) => $this->failed[] = $e);
+        Event::listen(WorkflowInterrupted::class, fn (WorkflowInterrupted $e) => $this->interrupted[] = $e);
+        Event::listen(WorkflowResumed::class, fn (WorkflowResumed $e) => $this->resumed[] = $e);
     }
 
     /**
@@ -106,6 +116,27 @@ class WorkflowFake extends WorkflowManager
         PHPUnit::assertTrue(
             collect($this->failed)->contains(fn (WorkflowFailed $e) => $e->run->name === $name),
             "Workflow [{$name}] did not fail."
+        );
+    }
+
+    public function assertInterrupted(string $name, ?string $reason = null): void
+    {
+        PHPUnit::assertTrue(
+            collect($this->interrupted)->contains(function (WorkflowInterrupted $e) use ($name, $reason) {
+                return $e->run->name === $name
+                    && ($reason === null || $e->interrupt->reason === $reason);
+            }),
+            $reason === null
+                ? "Workflow [{$name}] was not interrupted."
+                : "Workflow [{$name}] was not interrupted with reason [{$reason}]."
+        );
+    }
+
+    public function assertResumed(string $name): void
+    {
+        PHPUnit::assertTrue(
+            collect($this->resumed)->contains(fn (WorkflowResumed $e) => $e->run->name === $name),
+            "Workflow [{$name}] was not resumed."
         );
     }
 
