@@ -72,6 +72,8 @@ class NormalizeDocument
 
 ## The five patterns, made durable
 
+> The full version of this section — each official blog example rewritten side by side with its durable equivalent — lives in [docs/five-patterns-made-durable.md](docs/five-patterns-made-durable.md).
+
 ### 1. Prompt chaining — `then()`
 
 ```php
