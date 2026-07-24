@@ -14,8 +14,8 @@ it('fires lifecycle events across a successful run', function () {
     Event::fake([WorkflowStarted::class, StepCompleted::class, WorkflowCompleted::class]);
 
     AgentWorkflow::define('eventful')
-        ->start(PrepareStep::class)
-        ->then(TransformStep::class);
+        ->step(PrepareStep::class)
+        ->step(TransformStep::class);
 
     AgentWorkflow::start('eventful', ['value' => 1]);
 
@@ -30,7 +30,7 @@ it('fires WorkflowFailed when a step fails', function () {
     FlakyStep::$fail = true;
 
     AgentWorkflow::define('doomed')
-        ->start(FlakyStep::class);
+        ->step(FlakyStep::class);
 
     try {
         AgentWorkflow::start('doomed', []);

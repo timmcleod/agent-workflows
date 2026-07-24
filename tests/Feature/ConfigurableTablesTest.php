@@ -38,7 +38,7 @@ it('migrates and runs workflows against custom table names', function () {
         ->and(Schema::hasTable('wf_steps'))->toBeTrue()
         ->and(Schema::hasTable('wf_interrupts'))->toBeTrue();
 
-    AgentWorkflow::define('custom-tables')->start(PrepareStep::class);
+    AgentWorkflow::define('custom-tables')->step(PrepareStep::class);
 
     $run = AgentWorkflow::start('custom-tables', []);
 

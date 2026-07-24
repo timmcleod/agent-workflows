@@ -19,22 +19,13 @@ class WorkflowDefinition
     public function __construct(public readonly string $name) {}
 
     /**
-     * Define the first step of the workflow.
+     * Append a step that runs a unit of work. Agent classes become agent
+     * steps; any other invokable class becomes a callback step. Steps run
+     * in the order they are added.
      *
      * @param  class-string  $target
      */
-    public function start(string $target, ?string $as = null): static
-    {
-        return $this->then($target, $as);
-    }
-
-    /**
-     * Append a sequential step. Agent classes become agent steps; any other
-     * invokable class becomes a callback step.
-     *
-     * @param  class-string  $target
-     */
-    public function then(string $target, ?string $as = null): static
+    public function step(string $target, ?string $as = null): static
     {
         $this->steps[] = $this->makeStep($target, $as);
 
@@ -165,7 +156,7 @@ class WorkflowDefinition
         return $this->steps;
     }
 
-    public function step(string $id): StepDefinition
+    public function findStep(string $id): StepDefinition
     {
         foreach ($this->allSteps() as $step) {
             if ($step->id === $id) {

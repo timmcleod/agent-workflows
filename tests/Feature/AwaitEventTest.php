@@ -9,9 +9,9 @@ use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
 
 beforeEach(function () {
     AgentWorkflow::define('payment-flow')
-        ->start(PrepareStep::class)
+        ->step(PrepareStep::class)
         ->awaitEvent('payment.confirmed')
-        ->then(FinalizeStep::class);
+        ->step(FinalizeStep::class);
 });
 
 it('parks the run as awaiting_event with the event name persisted', function () {

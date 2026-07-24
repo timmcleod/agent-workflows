@@ -13,9 +13,9 @@ it('runs a parallel step as a real Bus::batch on the database queue driver', fun
     config()->set('queue.default', 'database');
 
     AgentWorkflow::define('queued-fanout')
-        ->start(PrepareStep::class)
+        ->step(PrepareStep::class)
         ->parallel([BranchAStep::class, BranchBStep::class])
-        ->then(FinalizeStep::class);
+        ->step(FinalizeStep::class);
 
     $run = AgentWorkflow::start('queued-fanout', []);
 

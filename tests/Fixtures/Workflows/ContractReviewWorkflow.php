@@ -12,7 +12,7 @@ class ContractReviewWorkflow extends Workflow
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->start(PrepareStep::class)
-            ->then(FinalizeStep::class);
+            ->step(PrepareStep::class)
+            ->step(FinalizeStep::class);
     }
 }

@@ -12,8 +12,8 @@ it('runs an agent step and checkpoints its text output into state', function () 
     SummarizeAgent::fake(['A concise summary.']);
 
     AgentWorkflow::define('summarize')
-        ->start(SummarizeAgent::class)
-        ->then(FinalizeStep::class);
+        ->step(SummarizeAgent::class)
+        ->step(FinalizeStep::class);
 
     $run = AgentWorkflow::start('summarize', ['doc' => 'A very long document.']);
 
@@ -28,7 +28,7 @@ it('checkpoints structured agent output and records usage on the step audit row'
     RiskAnalysisAgent::fake([['riskScore' => 9]]);
 
     AgentWorkflow::define('risk')
-        ->start(RiskAnalysisAgent::class);
+        ->step(RiskAnalysisAgent::class);
 
     $run = AgentWorkflow::start('risk', ['prompt' => 'Assess this contract.']);
 
@@ -44,7 +44,7 @@ it('fails the run when an agent step has no prompt source', function () {
     RiskAnalysisAgent::fake([['riskScore' => 2]]);
 
     AgentWorkflow::define('promptless')
-        ->start(RiskAnalysisAgent::class);
+        ->step(RiskAnalysisAgent::class);
 
     try {
         AgentWorkflow::start('promptless', []);

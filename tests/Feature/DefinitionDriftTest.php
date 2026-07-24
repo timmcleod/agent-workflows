@@ -13,8 +13,8 @@ function startFailedDriftingRun(): WorkflowRun
     FlakyStep::$fail = true;
 
     AgentWorkflow::define('drifty')
-        ->start(PrepareStep::class)
-        ->then(FlakyStep::class);
+        ->step(PrepareStep::class)
+        ->step(FlakyStep::class);
 
     try {
         AgentWorkflow::start('drifty', []);
@@ -26,9 +26,9 @@ function startFailedDriftingRun(): WorkflowRun
 
     // A deploy changes the definition while the run is parked in "failed".
     AgentWorkflow::define('drifty')
-        ->start(PrepareStep::class)
-        ->then(FlakyStep::class)
-        ->then(FinalizeStep::class);
+        ->step(PrepareStep::class)
+        ->step(FlakyStep::class)
+        ->step(FinalizeStep::class);
 
     return WorkflowRun::sole();
 }

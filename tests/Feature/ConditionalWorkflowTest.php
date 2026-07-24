@@ -12,11 +12,11 @@ beforeEach(function () {
     FlakyStep::$fail = false;
 
     AgentWorkflow::define('branching')
-        ->start(PrepareStep::class)
+        ->step(PrepareStep::class)
         ->when(fn (WorkflowState $s) => $s->get('value') > 10,
             then: TransformStep::class,
             else: FinalizeStep::class)
-        ->then(FlakyStep::class);
+        ->step(FlakyStep::class);
 });
 
 it('routes to the then-branch and continues after it', function () {
@@ -40,9 +40,9 @@ it('routes to the else-branch and continues after it', function () {
 
 it('skips ahead when the condition is false and there is no else-branch', function () {
     AgentWorkflow::define('maybe')
-        ->start(PrepareStep::class)
+        ->step(PrepareStep::class)
         ->when(fn (WorkflowState $s) => false, then: TransformStep::class)
-        ->then(FinalizeStep::class);
+        ->step(FinalizeStep::class);
 
     $run = AgentWorkflow::start('maybe', ['value' => 1]);
 
@@ -53,7 +53,7 @@ it('skips ahead when the condition is false and there is no else-branch', functi
 
 it('completes the run when a trailing condition skips', function () {
     AgentWorkflow::define('trailing')
-        ->start(PrepareStep::class)
+        ->step(PrepareStep::class)
         ->when(fn () => false, then: TransformStep::class);
 
     $run = AgentWorkflow::start('trailing', []);

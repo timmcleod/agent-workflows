@@ -110,11 +110,11 @@ use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
 public function boot(): void
 {
     AgentWorkflow::define('ticket-reply')
-        ->start(DraftReplyAgent::class)
+        ->step(DraftReplyAgent::class)
         ->awaitHuman(reason: 'Review the drafted reply', schema: [
             'final_reply' => 'required|string',
         ])
-        ->then(SendReply::class);
+        ->step(SendReply::class);
 }
 ```
 
@@ -209,8 +209,7 @@ All builder methods append a step and return the builder, so they chain. Every s
 
 | Method | What it does | When to use it |
 | --- | --- | --- |
-| `start($target)` | Adds the first step. Literally an alias of `then()` — it exists so definitions read naturally. | Once, first. `$target` is an SDK agent class (agent step) or any invokable class (callback step) — the builder tells them apart. |
-| `then($target)` | Adds the next sequential step. Runs after the previous step's state is committed. | The default. If in doubt, it's `then()`. |
+| `step($target)` | Adds a step that runs a unit of work, in the order added. Each runs after the previous step's state is committed. | The default. `$target` is an SDK agent class (agent step) or any invokable class (callback step) — the builder tells them apart. If in doubt, it's `step()`. |
 | `when($condition, then:, else:)` | Evaluates the closure against checkpointed state at runtime and runs one branch (or skips ahead if `else:` is omitted and the condition is false). Continues sequentially afterward; records the decision in `steps.{id}.branch`. | A fork in the road *within* a run: escalate vs auto-approve, premium vs standard handling. For routing whole conversations between agents across turns, use [handoffs](#handoffs) instead. |
 | `parallel([$a, $b], merge:, mode:)` | Fans out into concurrent branches from one state snapshot, then merges and continues. Default `mode: 'batch'` is a queued `Bus::batch`; `mode: 'sync'` runs in-process. | Independent work whose results you need together (analyze financials + legal + news, then synthesize). Not for steps that depend on each other — that's a chain. Provide `merge:` when branches may write the same keys. |
 | `evaluate($target, until:, maxIterations:)` | Runs `$target` repeatedly until the predicate on state passes or the cap is hit, checkpointing each iteration. Records `iteration` and `satisfied` under `steps.{id}`. | Generate-critique-revise loops where quality is judged by a predicate (usually over a critic agent's structured output). Always set a realistic `maxIterations` — it's your token budget. |
@@ -232,13 +231,13 @@ All builder methods append a step and return the builder, so they chain. Every s
 
 > The full version of this section — each official blog example rewritten side by side with its durable equivalent — lives in [docs/five-patterns-made-durable.md](docs/five-patterns-made-durable.md).
 
-### 1. Prompt chaining — `then()`
+### 1. Prompt chaining — `step()`
 
 ```php
 AgentWorkflow::define('content-pipeline')
-    ->start(OutlineAgent::class)
-    ->then(DraftAgent::class)
-    ->then(PolishAgent::class);
+    ->step(OutlineAgent::class)
+    ->step(DraftAgent::class)
+    ->step(PolishAgent::class);
 ```
 
 Unlike a `Pipeline`, every arrow in that chain is a checkpoint. **If `PolishAgent` fails, you retry `PolishAgent`** — the outline and draft are already committed:
@@ -257,11 +256,11 @@ Branch on checkpointed state at runtime. The workflow continues sequentially aft
 
 ```php
 AgentWorkflow::define('support-triage')
-    ->start(ClassifyTicketAgent::class)
+    ->step(ClassifyTicketAgent::class)
     ->when(fn (WorkflowState $s) => $s->get('steps.ClassifyTicketAgent.structured.urgent'),
         then: EscalationAgent::class,
         else: AutoReplyAgent::class)
-    ->then(LogResolution::class);
+    ->step(LogResolution::class);
 ```
 
 Omit `else:` to simply skip ahead when the condition is false. The decision is recorded in state under `steps.{id}.branch` for auditing.
@@ -272,13 +271,13 @@ Fan out into concurrent branches, each starting from the same state snapshot, th
 
 ```php
 AgentWorkflow::define('due-diligence')
-    ->start(FetchCompanyData::class)
+    ->step(FetchCompanyData::class)
     ->parallel([
         FinancialAnalysisAgent::class,
         LegalAnalysisAgent::class,
         NewsAnalysisAgent::class,
     ])
-    ->then(SynthesisAgent::class);
+    ->step(SynthesisAgent::class);
 ```
 
 By default branches run as a **`Bus::batch`** — durable, distributed across your queue workers, visible in Horizon. Pass `mode: 'sync'` to run them in-process via `Concurrency::run()` for request-lifetime fan-outs.
@@ -306,11 +305,11 @@ Loop a step until a predicate on state is satisfied, with a hard iteration cap. 
 
 ```php
 AgentWorkflow::define('ad-copy')
-    ->start(BriefAgent::class)
+    ->step(BriefAgent::class)
     ->evaluate(ReviseCopyAgent::class,
         until: fn (WorkflowState $s) => $s->get('steps.CritiqueAgent.structured.score', 0) >= 8,
         maxIterations: 5)
-    ->then(PublishCopy::class);
+    ->step(PublishCopy::class);
 ```
 
 After the loop, `steps.{id}.iteration` holds the count and `steps.{id}.satisfied` records whether the predicate passed or the cap was hit.
@@ -323,13 +322,13 @@ Park a run until someone signs off. The interrupt persists a reason and an optio
 
 ```php
 AgentWorkflow::define('contract-review')
-    ->start(ExtractClausesAgent::class)
-    ->then(RiskAnalysisAgent::class)
+    ->step(ExtractClausesAgent::class)
+    ->step(RiskAnalysisAgent::class)
     ->awaitHuman(reason: 'Final sign-off required', schema: [
         'approved' => 'required|boolean',
         'notes' => 'nullable|string',
     ])
-    ->then(GenerateSummaryAgent::class);
+    ->step(GenerateSummaryAgent::class);
 ```
 
 The run parks as `awaiting_human` — for minutes or for weeks, across deploys and queue restarts. Resume it whenever the human responds:
@@ -346,9 +345,9 @@ Park a run until something happens elsewhere in your system:
 
 ```php
 AgentWorkflow::define('order-flow')
-    ->start(PrepareOrderAgent::class)
+    ->step(PrepareOrderAgent::class)
     ->awaitEvent('payment.confirmed')
-    ->then(FulfillmentAgent::class);
+    ->step(FulfillmentAgent::class);
 ```
 
 ```php
@@ -516,8 +515,8 @@ class ContractReview extends Workflow
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->start(ExtractClausesAgent::class)
-            ->then(RiskAnalysisAgent::class);
+            ->step(ExtractClausesAgent::class)
+            ->step(RiskAnalysisAgent::class);
     }
 }
 ```

@@ -11,8 +11,8 @@ it('records lifecycle events for assertions while still executing', function () 
     $fake = AgentWorkflow::fake();
 
     AgentWorkflow::define('under-test')
-        ->start(PrepareStep::class)
-        ->then(TransformStep::class);
+        ->step(PrepareStep::class)
+        ->step(TransformStep::class);
 
     AgentWorkflow::start('under-test', ['value' => 21]);
 
@@ -31,8 +31,8 @@ it('asserts failures', function () {
     FlakyStep::$fail = true;
 
     AgentWorkflow::define('failing')
-        ->start(PrepareStep::class)
-        ->then(FlakyStep::class);
+        ->step(PrepareStep::class)
+        ->step(FlakyStep::class);
 
     try {
         AgentWorkflow::start('failing', []);
@@ -57,9 +57,9 @@ it('asserts interrupts and resumes', function () {
     $fake = AgentWorkflow::fake();
 
     AgentWorkflow::define('gated')
-        ->start(PrepareStep::class)
+        ->step(PrepareStep::class)
         ->awaitHuman(reason: 'Sign-off')
-        ->then(FinalizeStep::class);
+        ->step(FinalizeStep::class);
 
     $run = AgentWorkflow::start('gated', []);
 

@@ -70,7 +70,7 @@ class WorkflowStepJob implements ShouldQueue
 
         $this->guardAgainstDrift($run, $definition);
 
-        $step = $definition->step($this->stepId);
+        $step = $definition->findStep($this->stepId);
         $state = $run->workflowState();
         $stepRow = $this->beginStep($run, $step, $state);
 

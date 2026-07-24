@@ -14,11 +14,11 @@ beforeEach(function () {
     FlakyStep::$fail = false;
 
     AgentWorkflow::define('five-steps')
-        ->start(PrepareStep::class)
-        ->then(TransformStep::class)
-        ->then(TransformStep::class)
-        ->then(FlakyStep::class)
-        ->then(FinalizeStep::class);
+        ->step(PrepareStep::class)
+        ->step(TransformStep::class)
+        ->step(TransformStep::class)
+        ->step(FlakyStep::class)
+        ->step(FinalizeStep::class);
 });
 
 it('retries a failed run from the failed step, not from the beginning', function () {

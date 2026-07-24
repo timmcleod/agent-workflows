@@ -12,12 +12,12 @@ use TimMcLeod\AgentWorkflows\Tests\Fixtures\TestUser;
 
 beforeEach(function () {
     AgentWorkflow::define('signoff')
-        ->start(PrepareStep::class)
+        ->step(PrepareStep::class)
         ->awaitHuman(reason: 'Final sign-off required', schema: [
             'approved' => 'required|boolean',
             'notes' => 'nullable|string',
         ])
-        ->then(FinalizeStep::class);
+        ->step(FinalizeStep::class);
 });
 
 it('parks the run as awaiting_human with the reason and schema persisted', function () {
@@ -81,7 +81,7 @@ it('strips payload keys the schema does not cover', function () {
 });
 
 it('refuses to resume a run that is not awaiting a human', function () {
-    AgentWorkflow::define('plain')->start(PrepareStep::class);
+    AgentWorkflow::define('plain')->step(PrepareStep::class);
 
     $run = AgentWorkflow::start('plain', []);
 

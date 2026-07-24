@@ -34,7 +34,7 @@ class BranchRunner
         }
 
         $definition = $this->registry->get($run->name);
-        $parallel = $definition->step($parallelStepId);
+        $parallel = $definition->findStep($parallelStepId);
 
         if (! $parallel instanceof ParallelStepDefinition) {
             throw new WorkflowException("Step [{$parallelStepId}] is not a parallel step.");

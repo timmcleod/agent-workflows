@@ -36,7 +36,7 @@ class ParallelStepCompleter
         }
 
         $definition = $this->registry->get($run->name);
-        $step = $definition->step($stepId);
+        $step = $definition->findStep($stepId);
 
         if (! $step instanceof ParallelStepDefinition) {
             throw new WorkflowException("Step [{$stepId}] is not a parallel step.");

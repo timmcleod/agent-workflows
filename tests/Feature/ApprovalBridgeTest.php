@@ -13,9 +13,9 @@ use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
 
 beforeEach(function () {
     AgentWorkflow::define('deploy')
-        ->start(PrepareStep::class)
-        ->then(DeployAgent::class)
-        ->then(FinalizeStep::class);
+        ->step(PrepareStep::class)
+        ->step(DeployAgent::class)
+        ->step(FinalizeStep::class);
 });
 
 it('surfaces an SDK tool-approval pause as a workflow interrupt', function () {

@@ -15,9 +15,9 @@ use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
 
 it('fans out into a durable batch and merges the branch states', function () {
     AgentWorkflow::define('fanout')
-        ->start(PrepareStep::class)
+        ->step(PrepareStep::class)
         ->parallel([BranchAStep::class, BranchBStep::class])
-        ->then(FinalizeStep::class);
+        ->step(FinalizeStep::class);
 
     $run = AgentWorkflow::start('fanout', []);
 
@@ -33,7 +33,7 @@ it('fans out into a durable batch and merges the branch states', function () {
 
 it('fails the run when branches write conflicting values without a merge strategy', function () {
     AgentWorkflow::define('clash')
-        ->start(PrepareStep::class)
+        ->step(PrepareStep::class)
         ->parallel([ConflictAStep::class, ConflictBStep::class]);
 
     try {
@@ -52,7 +52,7 @@ it('fails the run when branches write conflicting values without a merge strateg
 
 it('resolves conflicts with a custom merge strategy', function () {
     AgentWorkflow::define('resolved')
-        ->start(PrepareStep::class)
+        ->step(PrepareStep::class)
         ->parallel(
             [ConflictAStep::class, ConflictBStep::class],
             merge: fn (array $branches, array $input) => array_merge($input, [
@@ -68,9 +68,9 @@ it('resolves conflicts with a custom merge strategy', function () {
 
 it('runs branches in-process in sync mode', function () {
     AgentWorkflow::define('sync-fanout')
-        ->start(PrepareStep::class)
+        ->step(PrepareStep::class)
         ->parallel([BranchAStep::class, BranchBStep::class], mode: 'sync')
-        ->then(FinalizeStep::class);
+        ->step(FinalizeStep::class);
 
     $run = AgentWorkflow::start('sync-fanout', []);
 
@@ -84,9 +84,9 @@ it('fails the run at the parallel step when a branch fails, and retries the whol
     FlakyStep::$fail = true;
 
     AgentWorkflow::define('half-boom')
-        ->start(PrepareStep::class)
+        ->step(PrepareStep::class)
         ->parallel([BranchAStep::class, FlakyStep::class])
-        ->then(FinalizeStep::class);
+        ->step(FinalizeStep::class);
 
     try {
         AgentWorkflow::start('half-boom', []);

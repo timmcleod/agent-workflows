@@ -13,6 +13,6 @@ class {{ class }} extends Workflow
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->start(FirstAgent::class);
+            ->step(FirstAgent::class);
     }
 }

@@ -14,9 +14,9 @@ This page rewrites each official example with checkpoints, retry, and resume. Sa
 
 ```php
 AgentWorkflow::define('content-pipeline')
-    ->start(OutlineAgent::class)
-    ->then(DraftAgent::class)
-    ->then(PolishAgent::class);
+    ->step(OutlineAgent::class)
+    ->step(DraftAgent::class)
+    ->step(PolishAgent::class);
 
 $run = AgentWorkflow::start('content-pipeline', input: ['prompt' => $brief]);
 ```
@@ -40,11 +40,11 @@ The run's audit log (`$run->steps`) records every attempt of every step: input-s
 
 ```php
 AgentWorkflow::define('support-triage')
-    ->start(ClassifyTicketAgent::class)
+    ->step(ClassifyTicketAgent::class)
     ->when(fn (WorkflowState $s) => $s->get('steps.ClassifyTicketAgent.structured.urgent'),
         then: EscalationAgent::class,
         else: AutoReplyAgent::class)
-    ->then(LogResolution::class);
+    ->step(LogResolution::class);
 ```
 
 The condition is evaluated against **checkpointed** state, the decision is recorded (`steps.{id}.branch`) for auditing, and the workflow continues sequentially after whichever branch ran. For *conversation-level* routing that outlives the request — the customer replies tomorrow and should reach the specialist, not triage — see [handoffs](../README.md#handoffs).
@@ -57,13 +57,13 @@ The condition is evaluated against **checkpointed** state, the decision is recor
 
 ```php
 AgentWorkflow::define('due-diligence')
-    ->start(FetchCompanyData::class)
+    ->step(FetchCompanyData::class)
     ->parallel([
         FinancialAnalysisAgent::class,
         LegalAnalysisAgent::class,
         NewsAnalysisAgent::class,
     ])
-    ->then(SynthesisAgent::class);
+    ->step(SynthesisAgent::class);
 ```
 
 Branches run as a **`Bus::batch`**: distributed across queue workers, SQS-safe, visible in Horizon. Each branch starts from the same state snapshot; results merge when all branches finish. Conflicting writes fail the run rather than silently losing data — or pass a `merge:` closure to resolve them. `mode: 'sync'` gives you the official in-request behavior behind the same API when that's genuinely what you want.
@@ -82,11 +82,11 @@ Branches run as a **`Bus::batch`**: distributed across queue workers, SQS-safe, 
 
 ```php
 AgentWorkflow::define('ad-copy')
-    ->start(BriefAgent::class)
+    ->step(BriefAgent::class)
     ->evaluate(ReviseCopyAgent::class,
         until: fn (WorkflowState $s) => $s->get('steps.CritiqueAgent.structured.score', 0) >= 8,
         maxIterations: 5)
-    ->then(PublishCopy::class);
+    ->step(PublishCopy::class);
 ```
 
 Every iteration is its own checkpointed job. A crash at iteration 3 resumes at iteration 3. After the loop, `steps.{id}.iteration` and `steps.{id}.satisfied` record how it ended.
@@ -97,13 +97,13 @@ None of the official examples can pause. Durability makes waiting a first-class 
 
 ```php
 AgentWorkflow::define('contract-review')
-    ->start(ExtractClausesAgent::class)
-    ->then(RiskAnalysisAgent::class)
+    ->step(ExtractClausesAgent::class)
+    ->step(RiskAnalysisAgent::class)
     ->awaitHuman(reason: 'Final sign-off required', schema: [
         'approved' => 'required|boolean',
         'notes' => 'nullable|string',
     ])
-    ->then(GenerateSummaryAgent::class);
+    ->step(GenerateSummaryAgent::class);
 ```
 
 ```php

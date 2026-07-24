@@ -10,9 +10,9 @@ use TimMcLeod\AgentWorkflows\WorkflowState;
 
 it('runs sequential steps in order and completes the run', function () {
     AgentWorkflow::define('sequential')
-        ->start(PrepareStep::class)
-        ->then(TransformStep::class)
-        ->then(FinalizeStep::class);
+        ->step(PrepareStep::class)
+        ->step(TransformStep::class)
+        ->step(FinalizeStep::class);
 
     $run = AgentWorkflow::start('sequential', ['value' => 3]);
 
@@ -26,8 +26,8 @@ it('runs sequential steps in order and completes the run', function () {
 
 it('checkpoints state into an audit row after every step', function () {
     AgentWorkflow::define('audited')
-        ->start(PrepareStep::class)
-        ->then(TransformStep::class);
+        ->step(PrepareStep::class)
+        ->step(TransformStep::class);
 
     $run = AgentWorkflow::start('audited', ['value' => 5]);
 
@@ -49,8 +49,8 @@ it('checkpoints state into an audit row after every step', function () {
 
 it('gives duplicate step classes distinct step ids', function () {
     $definition = AgentWorkflow::define('doubled')
-        ->start(TransformStep::class)
-        ->then(TransformStep::class);
+        ->step(TransformStep::class)
+        ->step(TransformStep::class);
 
     expect(array_map(fn ($s) => $s->id, $definition->steps()))
         ->toBe(['TransformStep', 'TransformStep:2']);
