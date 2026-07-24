@@ -1,0 +1,18 @@
+<?php
+
+namespace {{ namespace }};
+
+use TimMcLeod\AgentWorkflows\Workflow;
+use TimMcLeod\AgentWorkflows\WorkflowDefinition;
+
+class {{ class }} extends Workflow
+{
+    /**
+     * Build the workflow's steps.
+     */
+    public function build(WorkflowDefinition $workflow): WorkflowDefinition
+    {
+        return $workflow
+            ->start(FirstAgent::class);
+    }
+}

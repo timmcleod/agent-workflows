@@ -4,6 +4,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Class-Based Workflows
+    |--------------------------------------------------------------------------
+    |
+    | Workflow classes (created with `php artisan make:agent-workflow`) listed
+    | here are registered on every process at boot — including queue workers,
+    | which must know each definition to execute its steps.
+    |
+    */
+
+    'workflows' => [
+        // App\AgentWorkflows\ContractReview::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Queue Connection & Queue
     |--------------------------------------------------------------------------
     |

@@ -2,25 +2,33 @@
 
 namespace TimMcLeod\AgentWorkflows\Jobs;
 
+use Illuminate\Bus\Batch;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\Log;
 use Throwable;
+use TimMcLeod\AgentWorkflows\ConditionStepDefinition;
 use TimMcLeod\AgentWorkflows\Enums\RunStatus;
 use TimMcLeod\AgentWorkflows\Enums\StepStatus;
-use TimMcLeod\AgentWorkflows\Enums\StepType;
+use TimMcLeod\AgentWorkflows\EvaluateStepDefinition;
+use TimMcLeod\AgentWorkflows\Events\WorkflowFailed;
 use TimMcLeod\AgentWorkflows\Exceptions\DefinitionDriftException;
-use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
 use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
+use TimMcLeod\AgentWorkflows\Models\WorkflowStep;
+use TimMcLeod\AgentWorkflows\ParallelStepDefinition;
+use TimMcLeod\AgentWorkflows\Runtime\BranchRunner;
+use TimMcLeod\AgentWorkflows\Runtime\ParallelStepCompleter;
+use TimMcLeod\AgentWorkflows\Runtime\Progression;
+use TimMcLeod\AgentWorkflows\Runtime\StateMerger;
+use TimMcLeod\AgentWorkflows\Runtime\StepExecutors;
 use TimMcLeod\AgentWorkflows\StepDefinition;
-use TimMcLeod\AgentWorkflows\Steps\AgentStepExecutor;
-use TimMcLeod\AgentWorkflows\Steps\CallbackStepExecutor;
-use TimMcLeod\AgentWorkflows\Steps\StepExecutor;
 use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 use TimMcLeod\AgentWorkflows\WorkflowRegistry;
+use TimMcLeod\AgentWorkflows\WorkflowState;
 
 /**
  * Executes exactly one workflow step. The payload carries only identifiers —
@@ -59,7 +67,37 @@ class WorkflowStepJob implements ShouldQueue
 
         $step = $definition->step($this->stepId);
         $state = $run->workflowState();
+        $stepRow = $this->beginStep($run, $step, $state);
 
+        match (true) {
+            $step instanceof ConditionStepDefinition => $this->runCondition($run, $definition, $step, $state, $stepRow),
+            $step instanceof ParallelStepDefinition => $this->runParallel($run, $definition, $step, $state, $stepRow),
+            $step instanceof EvaluateStepDefinition => $this->runEvaluate($run, $definition, $step, $state, $stepRow),
+            default => $this->runSimple($run, $definition, $step, $state, $stepRow),
+        };
+    }
+
+    public function failed(?Throwable $exception): void
+    {
+        $run = WorkflowRun::query()->find($this->runId);
+
+        // On the sync queue an inner step's exception also unwinds through
+        // the jobs that dispatched it; only the first failure counts.
+        if ($run === null || $run->status === RunStatus::Failed) {
+            return;
+        }
+
+        $run->update([
+            'status' => RunStatus::Failed,
+            'failed_step' => $this->stepId,
+            'failure_reason' => $exception?->getMessage(),
+        ]);
+
+        event(new WorkflowFailed($run, $exception));
+    }
+
+    protected function beginStep(WorkflowRun $run, StepDefinition $step, WorkflowState $state): WorkflowStep
+    {
         $stepRow = $run->steps()->create([
             'step_id' => $step->id,
             'type' => $step->type,
@@ -75,8 +113,138 @@ class WorkflowStepJob implements ShouldQueue
             'started_at' => $run->started_at ?? now(),
         ]);
 
+        return $stepRow;
+    }
+
+    protected function runSimple(
+        WorkflowRun $run,
+        WorkflowDefinition $definition,
+        StepDefinition $step,
+        WorkflowState $state,
+        WorkflowStep $stepRow,
+    ): void {
+        $result = $this->attempt($stepRow, fn () => app(StepExecutors::class)->for($step)->execute($step, $state));
+
+        app(Progression::class)->complete($run, $definition, $step, $stepRow, $result->state, $result->usage);
+    }
+
+    protected function runCondition(
+        WorkflowRun $run,
+        WorkflowDefinition $definition,
+        ConditionStepDefinition $step,
+        WorkflowState $state,
+        WorkflowStep $stepRow,
+    ): void {
+        $chosen = $this->attempt($stepRow, fn () => ($step->condition)($state) ? $step->whenTrue : $step->whenFalse);
+
+        $state->set('steps.'.$step->id.'.branch', $chosen !== null ? $chosen->id : 'skipped');
+
+        // With no else-branch, a false condition skips ahead to the next
+        // sequential step; otherwise the chosen branch runs next.
+        app(Progression::class)->complete(
+            $run, $definition, $step, $stepRow, $state, nextOverride: $chosen,
+        );
+    }
+
+    protected function runEvaluate(
+        WorkflowRun $run,
+        WorkflowDefinition $definition,
+        EvaluateStepDefinition $step,
+        WorkflowState $state,
+        WorkflowStep $stepRow,
+    ): void {
+        $iteration = (int) $state->get('steps.'.$step->id.'.iteration', 0) + 1;
+
+        $result = $this->attempt($stepRow, fn () => app(StepExecutors::class)->for($step->body)->execute($step->body, $state));
+
+        $satisfied = ($step->until)($result->state);
+
+        $state = $result->state
+            ->set('steps.'.$step->id.'.iteration', $iteration)
+            ->set('steps.'.$step->id.'.satisfied', $satisfied);
+
+        app(Progression::class)->complete(
+            $run, $definition, $step, $stepRow, $state, $result->usage,
+            // Loop back into this same step until satisfied or out of budget.
+            nextOverride: $satisfied || $iteration >= $step->maxIterations ? null : $step,
+        );
+    }
+
+    protected function runParallel(
+        WorkflowRun $run,
+        WorkflowDefinition $definition,
+        ParallelStepDefinition $step,
+        WorkflowState $state,
+        WorkflowStep $stepRow,
+    ): void {
+        $connection = config('agent-workflows.queue.connection') ?? config('queue.default');
+
+        // On the sync queue driver a batch would execute inline inside the
+        // batch repository's transaction, rolling back branch checkpoints on
+        // failure — and "durable" means nothing there anyway. Run in-process.
+        if ($step->mode === 'sync' || config("queue.connections.{$connection}.driver") === 'sync') {
+            $this->runParallelSync($run, $definition, $step, $state, $stepRow);
+
+            return;
+        }
+
+        [$runId, $stepId, $stepRowId] = [$run->id, $step->id, $stepRow->id];
+
+        Bus::batch(array_map(
+            fn (StepDefinition $branch) => new ParallelBranchJob($runId, $stepId, $branch->id),
+            $step->branches,
+        ))
+            ->then(function () use ($runId, $stepId, $stepRowId) {
+                app(ParallelStepCompleter::class)->complete($runId, $stepId, $stepRowId);
+            })
+            ->catch(function (Batch $batch, Throwable $e) use ($runId, $stepId, $stepRowId) {
+                app(ParallelStepCompleter::class)->fail($runId, $stepId, $stepRowId, $e);
+            })
+            ->name("agent-workflow:{$run->name}:{$stepId}")
+            ->onConnection($connection)
+            ->dispatch();
+
+        // The parallel step row stays "running" until the batch callbacks
+        // merge the branch states (or fail the run).
+    }
+
+    protected function runParallelSync(
+        WorkflowRun $run,
+        WorkflowDefinition $definition,
+        ParallelStepDefinition $step,
+        WorkflowState $state,
+        WorkflowStep $stepRow,
+    ): void {
+        [$runId, $stepId] = [$run->id, $step->id];
+
+        $results = $this->attempt($stepRow, fn () => Concurrency::run(array_map(
+            fn (StepDefinition $branch) => fn (): array => app(BranchRunner::class)->run($runId, $stepId, $branch->id),
+            $step->branches,
+        )));
+
+        $branchStates = array_combine(
+            array_map(fn (StepDefinition $branch) => $branch->id, $step->branches),
+            $results,
+        );
+
+        $merged = $this->attempt($stepRow, fn () => app(StateMerger::class)->merge($step, $state->all(), $branchStates));
+
+        app(Progression::class)->complete($run, $definition, $step, $stepRow, $merged);
+    }
+
+    /**
+     * Run a unit of step work, recording any failure on the audit row before
+     * letting the exception fail the job (and, via failed(), the run).
+     *
+     * @template TResult
+     *
+     * @param  callable(): TResult  $callback
+     * @return TResult
+     */
+    protected function attempt(WorkflowStep $stepRow, callable $callback): mixed
+    {
         try {
-            $result = $this->executorFor($step)->execute($step, $state);
+            return $callback();
         } catch (Throwable $e) {
             $stepRow->update([
                 'status' => StepStatus::Failed,
@@ -86,48 +254,6 @@ class WorkflowStepJob implements ShouldQueue
 
             throw $e;
         }
-
-        $next = $definition->after($step->id);
-
-        // The checkpoint: the new state and the step's completion are
-        // committed atomically before the next step is dispatched.
-        DB::transaction(function () use ($run, $stepRow, $result, $step, $next) {
-            $run->update([
-                'state' => $result->state->all(),
-                'current_step' => $next !== null ? $next->id : $step->id,
-                'status' => $next !== null ? RunStatus::Running : RunStatus::Completed,
-                'finished_at' => $next !== null ? null : now(),
-            ]);
-
-            $stepRow->update([
-                'status' => StepStatus::Completed,
-                'output_state' => $result->state->all(),
-                'usage' => $result->usage,
-                'finished_at' => now(),
-            ]);
-        });
-
-        if ($next !== null) {
-            static::dispatch($run->id, $next->id)->afterCommit();
-        }
-    }
-
-    public function failed(?Throwable $exception): void
-    {
-        $run = WorkflowRun::query()->find($this->runId);
-
-        // Only the run's cursor step may fail the run — on the sync queue,
-        // an inner step's exception also unwinds through the jobs that
-        // dispatched it, and those must not overwrite the real failure.
-        if ($run === null || $run->current_step !== $this->stepId) {
-            return;
-        }
-
-        $run->update([
-            'status' => RunStatus::Failed,
-            'failed_step' => $this->stepId,
-            'failure_reason' => $exception?->getMessage(),
-        ]);
     }
 
     protected function guardAgainstDrift(WorkflowRun $run, WorkflowDefinition $definition): void
@@ -150,14 +276,5 @@ class WorkflowStepJob implements ShouldQueue
         }
 
         Log::warning("Agent workflow run [{$run->id}] is resuming on a drifted definition of [{$run->name}].");
-    }
-
-    protected function executorFor(StepDefinition $step): StepExecutor
-    {
-        return match ($step->type) {
-            StepType::Agent => app(AgentStepExecutor::class),
-            StepType::Callback => app(CallbackStepExecutor::class),
-            default => throw new WorkflowException("Step type [{$step->type->value}] is not supported yet."),
-        };
     }
 }

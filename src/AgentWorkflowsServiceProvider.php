@@ -3,6 +3,7 @@
 namespace TimMcLeod\AgentWorkflows;
 
 use Illuminate\Support\ServiceProvider;
+use TimMcLeod\AgentWorkflows\Console\MakeAgentWorkflowCommand;
 
 class AgentWorkflowsServiceProvider extends ServiceProvider
 {
@@ -18,7 +19,13 @@ class AgentWorkflowsServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
+        $this->registerConfiguredWorkflows();
+
         if ($this->app->runningInConsole()) {
+            $this->commands([
+                MakeAgentWorkflowCommand::class,
+            ]);
+
             $this->publishes([
                 __DIR__.'/../config/agent-workflows.php' => config_path('agent-workflows.php'),
             ], 'agent-workflows-config');
@@ -26,6 +33,20 @@ class AgentWorkflowsServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../database/migrations' => database_path('migrations'),
             ], 'agent-workflows-migrations');
+        }
+    }
+
+    /**
+     * Class-based workflows listed in the "workflows" config array are
+     * registered at boot on every process — including queue workers, which
+     * must know the definitions to execute steps.
+     */
+    protected function registerConfiguredWorkflows(): void
+    {
+        $manager = $this->app->make(WorkflowManager::class);
+
+        foreach (config('agent-workflows.workflows', []) as $workflow) {
+            $manager->register($workflow);
         }
     }
 }

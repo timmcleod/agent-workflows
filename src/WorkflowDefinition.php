@@ -2,6 +2,8 @@
 
 namespace TimMcLeod\AgentWorkflows;
 
+use Closure;
+use InvalidArgumentException;
 use Laravel\Ai\Contracts\Agent;
 use TimMcLeod\AgentWorkflows\Enums\StepType;
 use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
@@ -10,6 +12,9 @@ class WorkflowDefinition
 {
     /** @var array<int, StepDefinition> */
     protected array $steps = [];
+
+    /** @var array<int, string> */
+    protected array $reservedIds = [];
 
     public function __construct(public readonly string $name) {}
 
@@ -31,9 +36,90 @@ class WorkflowDefinition
      */
     public function then(string $target, ?string $as = null): static
     {
-        $type = is_a($target, Agent::class, true) ? StepType::Agent : StepType::Callback;
+        $this->steps[] = $this->makeStep($target, $as);
 
-        $this->steps[] = new StepDefinition($this->stepId($as ?? $target), $type, $target);
+        return $this;
+    }
+
+    /**
+     * Branch at runtime: when the condition holds, run $then, otherwise run
+     * $else (or skip straight to the next step when $else is omitted). The
+     * workflow continues sequentially after whichever branch ran.
+     *
+     * @param  Closure(WorkflowState): bool  $condition
+     * @param  class-string  $then
+     * @param  class-string|null  $else
+     */
+    public function when(Closure $condition, string $then, ?string $else = null, ?string $as = null): static
+    {
+        $whenTrue = $this->makeStep($then);
+        $whenFalse = $else !== null ? $this->makeStep($else) : null;
+
+        $this->steps[] = new ConditionStepDefinition(
+            $this->stepId($as ?? 'when:'.(count($this->steps) + 1)),
+            $condition,
+            $whenTrue,
+            $whenFalse,
+        );
+
+        return $this;
+    }
+
+    /**
+     * Fan out into concurrent branches, each starting from the same state
+     * snapshot, then merge the branch states and continue.
+     *
+     * Modes: "batch" (default) runs branches as a queued Bus::batch — the
+     * durable option; "sync" runs them in-process via Concurrency::run().
+     *
+     * @param  array<int|string, class-string>  $targets  string keys become step aliases
+     * @param  Closure(array<string, array<string, mixed>>, array<string, mixed>): (WorkflowState|array<string, mixed>)|null  $merge
+     */
+    public function parallel(array $targets, ?Closure $merge = null, string $mode = 'batch', ?string $as = null): static
+    {
+        if (! in_array($mode, ['batch', 'sync'], true)) {
+            throw new InvalidArgumentException("Parallel mode must be \"batch\" or \"sync\", [{$mode}] given.");
+        }
+
+        if ($targets === []) {
+            throw new InvalidArgumentException('A parallel step needs at least one branch.');
+        }
+
+        $branches = [];
+
+        foreach ($targets as $key => $target) {
+            $branches[] = $this->makeStep($target, is_string($key) ? $key : null);
+        }
+
+        $this->steps[] = new ParallelStepDefinition(
+            $this->stepId($as ?? 'parallel:'.(count($this->steps) + 1)),
+            $branches,
+            $merge,
+            $mode,
+        );
+
+        return $this;
+    }
+
+    /**
+     * Evaluator-optimizer loop: run the target repeatedly until the predicate
+     * holds (or maxIterations is reached), checkpointing every iteration.
+     *
+     * @param  class-string  $target
+     * @param  Closure(WorkflowState): bool  $until
+     */
+    public function evaluate(string $target, Closure $until, int $maxIterations = 3, ?string $as = null): static
+    {
+        if ($maxIterations < 1) {
+            throw new InvalidArgumentException('maxIterations must be at least 1.');
+        }
+
+        $id = $this->stepId($as ?? 'evaluate:'.class_basename($target));
+
+        // The body deliberately shares the evaluate step's id (see EvaluateStepDefinition).
+        $body = new StepDefinition($id, $this->typeFor($target), $target);
+
+        $this->steps[] = new EvaluateStepDefinition($id, $body, $until, $maxIterations);
 
         return $this;
     }
@@ -48,7 +134,7 @@ class WorkflowDefinition
 
     public function step(string $id): StepDefinition
     {
-        foreach ($this->steps as $step) {
+        foreach ($this->allSteps() as $step) {
             if ($step->id === $id) {
                 return $step;
             }
@@ -59,7 +145,7 @@ class WorkflowDefinition
 
     public function hasStep(string $id): bool
     {
-        foreach ($this->steps as $step) {
+        foreach ($this->allSteps() as $step) {
             if ($step->id === $id) {
                 return true;
             }
@@ -78,7 +164,9 @@ class WorkflowDefinition
     }
 
     /**
-     * The step that follows the given step, or null if it is the last.
+     * The step that follows the given step, or null if it is the last. For a
+     * step nested inside a condition, the successor is whatever follows the
+     * condition itself.
      */
     public function after(string $id): ?StepDefinition
     {
@@ -88,12 +176,22 @@ class WorkflowDefinition
             }
         }
 
+        foreach ($this->steps as $step) {
+            foreach ($step->children() as $child) {
+                if ($child->id === $id) {
+                    return $this->after($step->id);
+                }
+            }
+        }
+
         throw new WorkflowException("Workflow [{$this->name}] has no step [{$id}].");
     }
 
     /**
      * A stable hash of the definition, stored on each run at start time so
-     * definition drift across deploys can be detected on resume.
+     * definition drift across deploys can be detected on resume. Closure
+     * bodies (conditions, predicates, merge strategies) are not hashed —
+     * only the step structure is.
      */
     public function hash(): string
     {
@@ -106,7 +204,45 @@ class WorkflowDefinition
     }
 
     /**
-     * Derive a unique, readable step id from the target class (or explicit alias).
+     * @param  class-string  $target
+     */
+    protected function makeStep(string $target, ?string $as = null): StepDefinition
+    {
+        return new StepDefinition($this->stepId($as ?? $target), $this->typeFor($target), $target);
+    }
+
+    /**
+     * @param  class-string  $target
+     */
+    protected function typeFor(string $target): StepType
+    {
+        return is_a($target, Agent::class, true) ? StepType::Agent : StepType::Callback;
+    }
+
+    /**
+     * Every step in the definition, including nested branch steps.
+     *
+     * @return array<int, StepDefinition>
+     */
+    protected function allSteps(): array
+    {
+        $all = [];
+
+        foreach ($this->steps as $step) {
+            $all[] = $step;
+
+            foreach ($step->children() as $child) {
+                $all[] = $child;
+            }
+        }
+
+        return $all;
+    }
+
+    /**
+     * Derive a unique, readable step id from the target class (or explicit
+     * alias), reserving it so steps built before being appended (branch
+     * steps) still collide-check against each other.
      */
     protected function stepId(string $base): string
     {
@@ -115,9 +251,11 @@ class WorkflowDefinition
         $candidate = $id;
         $suffix = 2;
 
-        while ($this->hasStep($candidate)) {
+        while (in_array($candidate, $this->reservedIds, true)) {
             $candidate = $id.':'.$suffix++;
         }
+
+        $this->reservedIds[] = $candidate;
 
         return $candidate;
     }
