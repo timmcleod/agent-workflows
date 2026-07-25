@@ -5,10 +5,12 @@ namespace TimMcLeod\AgentWorkflows\Jobs;
 use Illuminate\Bus\Batch;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Concurrency;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 use TimMcLeod\AgentWorkflows\AwaitEventStepDefinition;
@@ -71,8 +73,14 @@ class WorkflowStepJob implements ShouldQueue
         $this->guardAgainstDrift($run, $definition);
 
         $step = $definition->findStep($this->stepId);
-        $state = $run->workflowState();
-        $stepRow = $this->beginStep($run, $step, $state);
+
+        $claim = $this->claim($step);
+
+        if ($claim === null) {
+            return; // duplicate or stale delivery — see claim()
+        }
+
+        [$run, $state, $stepRow] = $claim;
 
         match (true) {
             $step instanceof ConditionStepDefinition => $this->runCondition($run, $definition, $step, $state, $stepRow),
@@ -86,41 +94,82 @@ class WorkflowStepJob implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
-        $run = WorkflowRun::query()->find($this->runId);
+        // Conditional transition: only the run's cursor step may fail an
+        // active run. This no-ops both duplicate failure reports and the
+        // sync-queue case where an inner step's exception unwinds through
+        // the jobs that dispatched it.
+        $failed = WorkflowRun::query()
+            ->whereKey($this->runId)
+            ->where('current_step', $this->stepId)
+            ->whereIn('status', [RunStatus::Pending->value, RunStatus::Running->value])
+            ->update([
+                'status' => RunStatus::Failed->value,
+                'failed_step' => $this->stepId,
+                'failure_reason' => $exception?->getMessage(),
+            ]);
 
-        // On the sync queue an inner step's exception also unwinds through
-        // the jobs that dispatched it; only the first failure counts.
-        if ($run === null || $run->status === RunStatus::Failed) {
+        if ($failed === 0) {
             return;
         }
 
-        $run->update([
-            'status' => RunStatus::Failed,
-            'failed_step' => $this->stepId,
-            'failure_reason' => $exception?->getMessage(),
-        ]);
+        $run = WorkflowRun::query()->find($this->runId);
 
-        event(new WorkflowFailed($run, $exception));
+        if ($run !== null) {
+            event(new WorkflowFailed($run, $exception));
+        }
     }
 
-    protected function beginStep(WorkflowRun $run, StepDefinition $step, WorkflowState $state): WorkflowStep
+    /**
+     * Atomically claim the step for execution. Returns null when this
+     * delivery is a duplicate or stale: the cursor has moved on, the run is
+     * parked/terminal, another worker is mid-flight on the same step, or a
+     * concurrent claim won the audit-row insert (unique constraint).
+     *
+     * @return array{0: WorkflowRun, 1: WorkflowState, 2: WorkflowStep}|null
+     */
+    protected function claim(StepDefinition $step): ?array
     {
-        $stepRow = $run->steps()->create([
-            'step_id' => $step->id,
-            'type' => $step->type,
-            'status' => StepStatus::Running,
-            'attempt' => $run->steps()->where('step_id', $step->id)->count() + 1,
-            'input_state_hash' => $state->hash(),
-            'started_at' => now(),
-        ]);
+        try {
+            return DB::transaction(function () use ($step) {
+                $run = WorkflowRun::query()->lockForUpdate()->find($this->runId);
 
-        $run->update([
-            'status' => RunStatus::Running,
-            'current_step' => $step->id,
-            'started_at' => $run->started_at ?? now(),
-        ]);
+                $claimable = $run !== null
+                    && in_array($run->status, [RunStatus::Pending, RunStatus::Running], true)
+                    && $run->current_step === $this->stepId
+                    && ! $run->steps()
+                        ->where('step_id', $this->stepId)
+                        ->where('status', StepStatus::Running->value)
+                        ->exists();
 
-        return $stepRow;
+                if (! $claimable) {
+                    Log::info("Agent workflow step [{$this->stepId}] of run [{$this->runId}] skipped a duplicate or stale delivery.");
+
+                    return null;
+                }
+
+                $state = $run->workflowState();
+
+                $stepRow = $run->steps()->create([
+                    'step_id' => $step->id,
+                    'type' => $step->type,
+                    'status' => StepStatus::Running,
+                    'attempt' => $run->steps()->where('step_id', $step->id)->count() + 1,
+                    'input_state_hash' => $state->hash(),
+                    'started_at' => now(),
+                ]);
+
+                $run->update([
+                    'status' => RunStatus::Running,
+                    'started_at' => $run->started_at ?? now(),
+                ]);
+
+                return [$run, $state, $stepRow];
+            });
+        } catch (UniqueConstraintViolationException) {
+            Log::info("Agent workflow step [{$this->stepId}] of run [{$this->runId}] lost a concurrent claim; skipping.");
+
+            return null;
+        }
     }
 
     protected function runSimple(

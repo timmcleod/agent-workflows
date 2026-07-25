@@ -43,7 +43,9 @@ return new class extends Migration
             $table->timestamp('finished_at')->nullable();
             $table->timestamps();
 
-            $table->index(['run_id', 'step_id']);
+            // The idempotency barrier: two workers claiming the same attempt
+            // of the same step cannot both insert an audit row.
+            $table->unique(['run_id', 'step_id', 'attempt']);
         });
 
         Schema::create($interrupts, function (Blueprint $table) use ($runs) {

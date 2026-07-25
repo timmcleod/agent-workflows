@@ -2,6 +2,8 @@
 
 namespace TimMcLeod\AgentWorkflows\Runtime;
 
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 use TimMcLeod\AgentWorkflows\Enums\StepStatus;
 use TimMcLeod\AgentWorkflows\Events\StepCompleted;
@@ -43,14 +45,34 @@ class BranchRunner
         $branch = $parallel->branch($branchId);
         $state = $run->workflowState();
 
-        $stepRow = $run->steps()->create([
-            'step_id' => $branch->id,
-            'type' => $branch->type,
-            'status' => StepStatus::Running,
-            'attempt' => $run->steps()->where('step_id', $branch->id)->count() + 1,
-            'input_state_hash' => $state->hash(),
-            'started_at' => now(),
-        ]);
+        // Duplicate delivery of a branch job must not double-execute: no-op
+        // when another worker is mid-flight, or when a concurrent claim wins
+        // the audit-row insert (unique constraint on run/step/attempt).
+        $inFlight = $run->steps()
+            ->where('step_id', $branch->id)
+            ->where('status', StepStatus::Running->value)
+            ->exists();
+
+        if ($inFlight) {
+            Log::info("Agent workflow branch [{$branch->id}] of run [{$runId}] skipped a duplicate delivery.");
+
+            return $run->state ?? [];
+        }
+
+        try {
+            $stepRow = $run->steps()->create([
+                'step_id' => $branch->id,
+                'type' => $branch->type,
+                'status' => StepStatus::Running,
+                'attempt' => $run->steps()->where('step_id', $branch->id)->count() + 1,
+                'input_state_hash' => $state->hash(),
+                'started_at' => now(),
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            Log::info("Agent workflow branch [{$branch->id}] of run [{$runId}] lost a concurrent claim; skipping.");
+
+            return $run->state ?? [];
+        }
 
         try {
             $result = $this->executors->for($branch)->execute($branch, $state);

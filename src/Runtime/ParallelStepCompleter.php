@@ -75,24 +75,36 @@ class ParallelStepCompleter
 
     public function fail(string $runId, string $stepId, int $stepRowId, Throwable $exception): void
     {
-        $run = WorkflowRun::query()->find($runId);
+        WorkflowStep::query()
+            ->whereKey($stepRowId)
+            ->where('status', StepStatus::Running->value)
+            ->update([
+                'status' => StepStatus::Failed->value,
+                'error' => $exception->getMessage(),
+                'finished_at' => now(),
+            ]);
 
-        if ($run === null || $run->status === RunStatus::Failed) {
+        // Conditional transition: only fail a run still executing this
+        // parallel step — duplicate batch callbacks and races with other
+        // transitions no-op.
+        $failed = WorkflowRun::query()
+            ->whereKey($runId)
+            ->where('current_step', $stepId)
+            ->whereIn('status', [RunStatus::Pending->value, RunStatus::Running->value])
+            ->update([
+                'status' => RunStatus::Failed->value,
+                'failed_step' => $stepId,
+                'failure_reason' => $exception->getMessage(),
+            ]);
+
+        if ($failed === 0) {
             return;
         }
 
-        WorkflowStep::query()->find($stepRowId)?->update([
-            'status' => StepStatus::Failed,
-            'error' => $exception->getMessage(),
-            'finished_at' => now(),
-        ]);
+        $run = WorkflowRun::query()->find($runId);
 
-        $run->update([
-            'status' => RunStatus::Failed,
-            'failed_step' => $stepId,
-            'failure_reason' => $exception->getMessage(),
-        ]);
-
-        event(new WorkflowFailed($run, $exception));
+        if ($run !== null) {
+            event(new WorkflowFailed($run, $exception));
+        }
     }
 }

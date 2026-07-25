@@ -3,6 +3,7 @@
 namespace TimMcLeod\AgentWorkflows\Runtime;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use TimMcLeod\AgentWorkflows\Enums\RunStatus;
 use TimMcLeod\AgentWorkflows\Enums\StepStatus;
 use TimMcLeod\AgentWorkflows\Events\StepCompleted;
@@ -37,13 +38,31 @@ class Progression
     ): void {
         $next = $nextOverride ?? $definition->after($step->id);
 
-        DB::transaction(function () use ($run, $stepRow, $state, $usage, $step, $next) {
-            $run->update([
-                'state' => $state->all(),
-                'current_step' => $next !== null ? $next->id : $step->id,
-                'status' => $next !== null ? RunStatus::Running : RunStatus::Completed,
-                'finished_at' => $next !== null ? null : now(),
-            ]);
+        $advanced = DB::transaction(function () use ($run, $stepRow, $state, $usage, $step, $next) {
+            // Conditional advance: commit only if the run is still executing
+            // this step. A concurrent transition (another worker advanced,
+            // the run failed or was resumed elsewhere) makes this a no-op —
+            // exactly one completion may move the cursor.
+            $advanced = WorkflowRun::query()
+                ->whereKey($run->id)
+                ->where('current_step', $step->id)
+                ->where('status', RunStatus::Running->value)
+                ->update([
+                    'state' => json_encode($state->all(), JSON_THROW_ON_ERROR),
+                    'current_step' => $next !== null ? $next->id : $step->id,
+                    'status' => $next !== null ? RunStatus::Running->value : RunStatus::Completed->value,
+                    'finished_at' => $next !== null ? null : now(),
+                ]);
+
+            if ($advanced === 0) {
+                $stepRow->update([
+                    'status' => StepStatus::Failed,
+                    'error' => 'Run state changed during execution; result discarded.',
+                    'finished_at' => now(),
+                ]);
+
+                return false;
+            }
 
             $stepRow->update([
                 'status' => StepStatus::Completed,
@@ -51,7 +70,17 @@ class Progression
                 'usage' => $usage,
                 'finished_at' => now(),
             ]);
+
+            return true;
         });
+
+        if (! $advanced) {
+            Log::warning("Agent workflow run [{$run->id}] changed while step [{$step->id}] was executing; its result was discarded.");
+
+            return;
+        }
+
+        $run->refresh();
 
         event(new StepCompleted($run, $stepRow));
 
