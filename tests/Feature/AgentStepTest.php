@@ -63,7 +63,9 @@ it('checkpoints structured agent output and records usage on the step audit row'
     $run = AgentWorkflow::start('risk', ['prompt' => 'Assess this contract.']);
 
     expect($run->status)->toBe(RunStatus::Completed)
-        ->and($run->state['steps']['RiskAnalysisAgent']['structured'])->toBe(['riskScore' => 9]);
+        ->and($run->state['steps']['RiskAnalysisAgent']['structured'])->toBe(['riskScore' => 9])
+        // The text form is the same JSON again — not checkpointed.
+        ->and($run->state['steps']['RiskAnalysisAgent'])->not->toHaveKey('text');
 
     $step = $run->steps()->sole();
 

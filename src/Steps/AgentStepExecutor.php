@@ -54,7 +54,9 @@ class AgentStepExecutor implements StepExecutor
         }
 
         $state->set($key, array_filter([
-            'text' => $result->text,
+            // For structured agents the text is just the raw JSON of the
+            // same data — checkpoint only the structured form.
+            'text' => $result->structured === null ? $result->text : null,
             'structured' => $result->structured,
             'conversation_id' => $result->conversationId,
         ], fn (mixed $value) => $value !== null && $value !== ''));

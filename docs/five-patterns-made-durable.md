@@ -92,7 +92,7 @@ return $workflow
     ->step(BriefAgent::class)
     ->evaluate(ReviseCopyAgent::class, as: 'revise',
         prompt: fn (WorkflowState $s) => 'Improve this copy and score your result 1-10: '
-            .($s->get('steps.revise.text') ?? $s->get('steps.BriefAgent.text')),
+            .($s->get('steps.revise.structured.copy') ?? $s->get('steps.BriefAgent.text')),
         until: fn (WorkflowState $s) => $s->get('steps.revise.structured.score', 0) >= 8,
         maxIterations: 5)
     ->step(PublishCopy::class);

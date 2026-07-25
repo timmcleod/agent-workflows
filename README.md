@@ -329,7 +329,7 @@ return $workflow
     ->step(BriefAgent::class)
     ->evaluate(ReviseCopyAgent::class, as: 'revise',
         prompt: fn (WorkflowState $s) => 'Improve this copy and score your result 1-10: '
-            .($s->get('steps.revise.text') ?? $s->get('steps.BriefAgent.text')),
+            .($s->get('steps.revise.structured.copy') ?? $s->get('steps.BriefAgent.text')),
         until: fn (WorkflowState $s) => $s->get('steps.revise.structured.score', 0) >= 8,
         maxIterations: 5)
     ->step(PublishCopy::class);
@@ -464,9 +464,11 @@ Agent targets in other step types carry prompts too: `when(..., thenPrompt:, els
 After the step runs, its output is checkpointed under `steps.{step id}`:
 
 ```php
-$run->state['steps']['RiskAnalysisAgent']['text'];        // the response text
-$run->state['steps']['RiskAnalysisAgent']['structured'];  // structured output, if the agent declares a schema
+$run->state['steps']['DraftReplyAgent']['text'];          // the response text
+$run->state['steps']['RiskAnalysisAgent']['structured'];  // structured output, when the agent declares a schema
 ```
+
+Agents with a schema checkpoint only `structured` (their text form is the same JSON again); everything else checkpoints `text`.
 
 Token usage from every agent response is recorded on the step's audit row.
 
