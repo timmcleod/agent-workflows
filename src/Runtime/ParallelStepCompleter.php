@@ -95,6 +95,7 @@ class ParallelStepCompleter
                 'status' => RunStatus::Failed->value,
                 'failed_step' => $stepId,
                 'failure_reason' => $exception->getMessage(),
+                'updated_at' => now(),
             ]);
 
         if ($failed === 0) {

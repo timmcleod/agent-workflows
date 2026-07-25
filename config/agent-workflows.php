@@ -54,6 +54,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Stale-Run Sweeping
+    |--------------------------------------------------------------------------
+    |
+    | The agent-workflows:sweep command (schedule it every few minutes)
+    | recovers runs stranded by hard-killed workers or lost dispatches. A
+    | pending/running run untouched for longer than stale_after seconds is
+    | either re-dispatched from its checkpoint ("redispatch") or marked
+    | failed ("fail"). Set stale_after comfortably above your longest step,
+    | including parallel fan-outs.
+    |
+    */
+
+    'sweep' => [
+        'stale_after' => env('AGENT_WORKFLOWS_STALE_AFTER', 600),
+        'action' => env('AGENT_WORKFLOWS_SWEEP_ACTION', 'redispatch'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Definition Drift
     |--------------------------------------------------------------------------
     |

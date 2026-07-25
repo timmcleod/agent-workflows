@@ -7,6 +7,7 @@ use Illuminate\Support\ServiceProvider;
 use Laravel\Ai\Events\AgentPrompted;
 use Laravel\Ai\Events\AgentStreamed;
 use TimMcLeod\AgentWorkflows\Console\MakeAgentWorkflowCommand;
+use TimMcLeod\AgentWorkflows\Console\SweepCommand;
 use TimMcLeod\AgentWorkflows\Handoffs\HandoffManager;
 use TimMcLeod\AgentWorkflows\Listeners\RecordHandoffs;
 
@@ -33,6 +34,7 @@ class AgentWorkflowsServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 MakeAgentWorkflowCommand::class,
+                SweepCommand::class,
             ]);
 
             $this->publishes([

@@ -52,6 +52,7 @@ class Progression
                     'current_step' => $next !== null ? $next->id : $step->id,
                     'status' => $next !== null ? RunStatus::Running->value : RunStatus::Completed->value,
                     'finished_at' => $next !== null ? null : now(),
+                    'updated_at' => now(),
                 ]);
 
             if ($advanced === 0) {

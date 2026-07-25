@@ -106,6 +106,7 @@ class WorkflowStepJob implements ShouldQueue
                 'status' => RunStatus::Failed->value,
                 'failed_step' => $this->stepId,
                 'failure_reason' => $exception?->getMessage(),
+                'updated_at' => now(),
             ]);
 
         if ($failed === 0) {

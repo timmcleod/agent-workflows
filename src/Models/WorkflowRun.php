@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Validator;
 use TimMcLeod\AgentWorkflows\Enums\InterruptType;
 use TimMcLeod\AgentWorkflows\Enums\RunStatus;
 use TimMcLeod\AgentWorkflows\Enums\StepStatus;
+use TimMcLeod\AgentWorkflows\Events\WorkflowCancelled;
 use TimMcLeod\AgentWorkflows\Events\WorkflowResumed;
 use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
 use TimMcLeod\AgentWorkflows\Jobs\WorkflowStepJob;
@@ -206,6 +207,40 @@ class WorkflowRun extends Model
         }
 
         return $interrupt;
+    }
+
+    /**
+     * Cancel the run. Takes effect immediately for pending, parked, or
+     * failed runs; for a run mid-step, the in-flight step's result is
+     * discarded at the step boundary (it will not advance a cancelled run).
+     * Open interrupts are resolved as cancelled. Refused once terminal.
+     */
+    public function cancel(): static
+    {
+        DB::transaction(function () {
+            $run = static::query()->lockForUpdate()->findOrFail($this->id);
+
+            if ($run->status->isTerminal()) {
+                throw new WorkflowException(
+                    "Run [{$run->id}] is already [{$run->status->value}] and cannot be cancelled."
+                );
+            }
+
+            $run->interrupts()->whereNull('resolved_at')->update([
+                'resolution' => json_encode(['cancelled' => true]),
+                'resolved_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $run->update([
+                'status' => RunStatus::Cancelled,
+                'finished_at' => now(),
+            ]);
+        });
+
+        event(new WorkflowCancelled($this->refresh()));
+
+        return $this;
     }
 
     /**

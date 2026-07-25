@@ -241,6 +241,7 @@ All builder methods append a step and return the builder, so they chain. Every s
 | `$run->retry()` | Re-dispatches a **failed** run from its failed step. Earlier steps keep their committed results. | After you've fixed whatever failed (provider outage, bad config, a bug). Throws unless the run's status is `failed`. |
 | `$run->resume($response, by:)` | Wakes a run parked by `awaitHuman()` (validates against the schema, merges into state) or by a tool-approval pause (replays the decisions map into the agent). | When the human answers. `by:` records who, on the interrupt. |
 | `$run->deliverEvent($event, $payload)` | Wakes a run parked by `awaitEvent()`; the payload merges into state. | From the webhook/listener where the awaited thing happens. |
+| `$run->cancel()` | Ends the run as `cancelled`, resolving any open interrupt. A step already executing finishes but cannot advance a cancelled run — its result is discarded at the boundary. | Abandoning a run from any non-terminal state (including `failed`). |
 | `$run->workflowState()` | The current checkpoint as a `WorkflowState` bag. | Reading run data in UIs or listeners (`$run->state` gives the raw array). |
 
 ## The five patterns, made durable
@@ -326,13 +327,15 @@ Loop a step until a predicate on state is satisfied, with a hard iteration cap. 
 // In AdCopy::build():
 return $workflow
     ->step(BriefAgent::class)
-    ->evaluate(ReviseCopyAgent::class,
-        until: fn (WorkflowState $s) => $s->get('steps.CritiqueAgent.structured.score', 0) >= 8,
+    ->evaluate(ReviseCopyAgent::class, as: 'revise',
+        prompt: fn (WorkflowState $s) => 'Improve this copy and score your result 1-10: '
+            .($s->get('steps.revise.text') ?? $s->get('steps.BriefAgent.text')),
+        until: fn (WorkflowState $s) => $s->get('steps.revise.structured.score', 0) >= 8,
         maxIterations: 5)
     ->step(PublishCopy::class);
 ```
 
-After the loop, `steps.{id}.iteration` holds the count and `steps.{id}.satisfied` records whether the predicate passed or the cap was hit.
+The loop target both revises and scores (a structured response with `copy` and `score`), and the predicate reads the loop's own output under its step id. After the loop, `steps.{id}.iteration` holds the count and `steps.{id}.satisfied` records whether the predicate passed or the cap was hit.
 
 ## Human-in-the-loop
 
@@ -505,17 +508,20 @@ AgentWorkflow::start('contract-review', input: [...], participant: $user);
 Listen for lifecycle events anywhere you'd listen for any Laravel event:
 
 ```php
-use TimMcLeod\AgentWorkflows\Events\StepCompleted;
-use TimMcLeod\AgentWorkflows\Events\WorkflowCompleted;
 use TimMcLeod\AgentWorkflows\Events\WorkflowFailed;
-use TimMcLeod\AgentWorkflows\Events\WorkflowStarted;
 
 Event::listen(WorkflowFailed::class, function (WorkflowFailed $event) {
     Notification::send($ops, new WorkflowFailedNotification($event->run, $event->exception));
 });
 ```
 
-`StepCompleted` fires per step (including parallel branches) and carries the audit row — token usage included — which makes cost accounting a one-listener job.
+The full set, all under `TimMcLeod\AgentWorkflows\Events`:
+
+- `WorkflowStarted($run)` — a run was created.
+- `StepCompleted($run, $step)` — fires per step, including parallel branches, and carries the audit row (token usage included), which makes cost accounting a one-listener job.
+- `WorkflowInterrupted($run, $interrupt)` — the run parked: `awaitHuman()`, `awaitEvent()`, or an agent tool-approval pause. The interrupt carries the reason, response schema, and context.
+- `WorkflowResumed($run, $interrupt)` — a human resumed it or the awaited event arrived.
+- `WorkflowCompleted($run)` / `WorkflowFailed($run, $exception)` / `WorkflowCancelled($run)` — terminal transitions.
 
 ## Workflow classes
 
@@ -551,6 +557,21 @@ it('reviews contracts', function () {
 
 Also available: `assertNotStarted()`, `assertNothingStarted()`, `assertStepDidNotRun()`, `assertFailed()`. With the default `sync` queue in tests, an entire workflow executes inside the `start()` call — no worker needed.
 
+## Operations
+
+What to know once workflows run in production:
+
+- **Isolate the queue.** Point `agent-workflows.queue.connection`/`queue.queue` at a dedicated queue so long agent turns don't starve your app's other jobs, and give it its own Horizon supervisor or `queue:work` process.
+- **Give workers room.** An agent step is one full agentic turn — several LLM calls when tools are involved. Run its workers with a `--timeout` (and matching `retry_after`) sized to your slowest step, not one HTTP call.
+- **Schedule the sweeper.** Workers die ungracefully (OOM, SIGKILL, deploys); the sweeper recovers runs stranded that way, re-dispatching from the checkpoint (or marking them failed, per `sweep.action`):
+
+  ```php
+  Schedule::command('agent-workflows:sweep')->everyFiveMinutes();
+  ```
+
+  Set `sweep.stale_after` comfortably above your longest step — including parallel fan-outs — so genuinely busy runs are never swept. Re-dispatch is safe: duplicate deliveries are rejected by the engine's step claims.
+- **Execution semantics.** Step bodies are at-least-once (a crash after a side effect but before the checkpoint re-runs the body on recovery); checkpoints and cursor advances are exactly-once. Keep step side effects idempotent, or isolate them in their own step.
+
 ## Configuration
 
 `config/agent-workflows.php`:
@@ -560,6 +581,7 @@ Also available: `assertNotStarted()`, `assertNothingStarted()`, `assertStepDidNo
 | `workflows`                                          | Your Workflow classes, registered at boot (workers included).               |
 | `queue.connection` / `queue.queue`                   | Route step jobs onto their own connection/queue (recommended with Horizon). |
 | `tables.*`                                           | Rename the package's tables (runs, steps, interrupts, conversation owners). |
+| `sweep.stale_after` / `sweep.action`                 | Staleness threshold (seconds) and recovery action for the sweeper.          |
 | `definition_drift`                                   | `strict` (refuse to resume a changed definition) or `loose` (by step name). |
 
 ## What this package is not

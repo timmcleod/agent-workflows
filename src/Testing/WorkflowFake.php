@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Assert as PHPUnit;
 use TimMcLeod\AgentWorkflows\Events\StepCompleted;
+use TimMcLeod\AgentWorkflows\Events\WorkflowCancelled;
 use TimMcLeod\AgentWorkflows\Events\WorkflowCompleted;
 use TimMcLeod\AgentWorkflows\Events\WorkflowFailed;
 use TimMcLeod\AgentWorkflows\Events\WorkflowInterrupted;
@@ -39,6 +40,9 @@ class WorkflowFake extends WorkflowManager
     /** @var array<int, WorkflowResumed> */
     protected array $resumed = [];
 
+    /** @var array<int, WorkflowCancelled> */
+    protected array $cancelled = [];
+
     public function subscribe(): void
     {
         // The run model is cloned so assertions see its state at event time,
@@ -49,6 +53,7 @@ class WorkflowFake extends WorkflowManager
         Event::listen(WorkflowFailed::class, fn (WorkflowFailed $e) => $this->failed[] = $e);
         Event::listen(WorkflowInterrupted::class, fn (WorkflowInterrupted $e) => $this->interrupted[] = $e);
         Event::listen(WorkflowResumed::class, fn (WorkflowResumed $e) => $this->resumed[] = $e);
+        Event::listen(WorkflowCancelled::class, fn (WorkflowCancelled $e) => $this->cancelled[] = $e);
     }
 
     /**
@@ -137,6 +142,14 @@ class WorkflowFake extends WorkflowManager
         PHPUnit::assertTrue(
             collect($this->resumed)->contains(fn (WorkflowResumed $e) => $e->run->name === $name),
             "Workflow [{$name}] was not resumed."
+        );
+    }
+
+    public function assertCancelled(string $name): void
+    {
+        PHPUnit::assertTrue(
+            collect($this->cancelled)->contains(fn (WorkflowCancelled $e) => $e->run->name === $name),
+            "Workflow [{$name}] was not cancelled."
         );
     }
 
