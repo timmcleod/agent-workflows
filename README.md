@@ -467,6 +467,16 @@ $run->state['steps']['RiskAnalysisAgent']['structured'];  // structured output, 
 
 Token usage from every agent response is recorded on the step's audit row.
 
+### Agents use their tools freely within a step
+
+An agent step is one full agentic turn, not one LLM call. If the agent has tools, the SDK's tool loop runs to completion inside the step: the model calls a tool, reads the result, thinks, calls another, and keeps going until it has an answer (capped by `#[MaxSteps]` on the agent). The workflow checkpoints the finished result. So a single `->step(ResearchAgent::class)` can look up an order, query a knowledge base, and draft a response, all in one step.
+
+Three things follow from "the loop lives inside one queued job":
+
+- **Give workers room.** A tool-heavy agent makes several LLM calls in one job, so run workers with a `--timeout` (and matching `retry_after`) that covers the whole turn, not one call.
+- **The step is the retry unit.** A failure at tool-round 3 retries the whole step from round 1. There is no mid-loop checkpoint, so keep tools idempotent, or pull side-effecting work into its own callback step after the agent.
+- **Approval pauses are the exception.** A tool that [requires approval](#sdk-tool-approvals-become-workflow-interrupts) mid-loop parks the run; on `resume()` the loop continues from where it paused, not from round 1.
+
 ## Inspecting runs
 
 Runs, steps, and interrupts are plain Eloquent models:
