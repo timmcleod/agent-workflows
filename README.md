@@ -6,7 +6,7 @@ Picture a real feature: reviewing a contract. Extract the clauses, score the ris
 
 What teams build around that wall is always the same pile of glue: a `pending_reviews` table, a couple of jobs, status columns, a resume endpoint, retry logic. Every team reinvents the pile, slightly differently, with slightly different bugs.
 
-This package is that pile, done once, properly, on the substrate Laravel already ships: queues, batches, retries, and Horizon.
+This package is that pile, done once, properly, on the substrate Laravel already ships: queues, batches, and retries.
 
 - **A process that can wait.** `awaitHuman()` parks a run in the database for hours or weeks; `resume()` validates the human's answer and continues. `awaitEvent()` does the same for webhooks and other systems.
 - **Retry the step that broke, not the whole thing.** Every step's result is committed before the next step runs. If step 5 fails, `$run->retry()` re-runs step 5. Steps 1 to 4 keep their results and their token bill stays paid.
@@ -300,7 +300,7 @@ return $workflow
     ->step(SynthesisAgent::class);
 ```
 
-By default branches run as a **`Bus::batch`** — durable, distributed across your queue workers, visible in Horizon. Pass `mode: 'sync'` to run them in-process via `Concurrency::run()` for request-lifetime fan-outs.
+By default branches run as a **`Bus::batch`** — durable and distributed across your queue workers. Pass `mode: 'sync'` to run them in-process via `Concurrency::run()` for request-lifetime fan-outs.
 
 Branch states are merged automatically; if two branches write different values to the same key, the run fails rather than silently losing data. Resolve conflicts with your own strategy:
 
@@ -561,7 +561,7 @@ Also available: `assertNotStarted()`, `assertNothingStarted()`, `assertStepDidNo
 
 What to know once workflows run in production:
 
-- **Isolate the queue.** Point `agent-workflows.queue.connection`/`queue.queue` at a dedicated queue so long agent turns don't starve your app's other jobs, and give it its own Horizon supervisor or `queue:work` process.
+- **Isolate the queue.** Point `agent-workflows.queue.connection`/`queue.queue` at a dedicated queue so long agent turns don't starve your app's other jobs, and give it its own worker process.
 - **Give workers room.** An agent step is one full agentic turn — several LLM calls when tools are involved. Run its workers with a `--timeout` (and matching `retry_after`) sized to your slowest step, not one HTTP call.
 - **Schedule the sweeper.** Workers die ungracefully (OOM, SIGKILL, deploys); the sweeper recovers runs stranded that way, re-dispatching from the checkpoint (or marking them failed, per `sweep.action`):
 
@@ -579,7 +579,7 @@ What to know once workflows run in production:
 | Key                                                  | What it does                                                                 |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `workflows`                                          | Your Workflow classes, registered at boot (workers included).               |
-| `queue.connection` / `queue.queue`                   | Route step jobs onto their own connection/queue (recommended with Horizon). |
+| `queue.connection` / `queue.queue`                   | Route step jobs onto their own connection/queue.                            |
 | `tables.*`                                           | Rename the package's tables (runs, steps, interrupts, conversation owners). |
 | `sweep.stale_after` / `sweep.action`                 | Staleness threshold (seconds) and recovery action for the sweeper.          |
 | `definition_drift`                                   | `strict` (refuse to resume a changed definition) or `loose` (by step name). |

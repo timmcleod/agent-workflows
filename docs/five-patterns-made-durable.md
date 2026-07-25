@@ -72,7 +72,7 @@ return $workflow
     ->step(SynthesisAgent::class);
 ```
 
-Branches run as a **`Bus::batch`**: distributed across queue workers, SQS-safe, visible in Horizon. Each branch starts from the same state snapshot; results merge when all branches finish. Conflicting writes fail the run rather than silently losing data — or pass a `merge:` closure to resolve them. `mode: 'sync'` gives you the official in-request behavior behind the same API when that's genuinely what you want.
+Branches run as a **`Bus::batch`**: distributed across queue workers, SQS-safe. Each branch starts from the same state snapshot; results merge when all branches finish. Conflicting writes fail the run rather than silently losing data — or pass a `merge:` closure to resolve them. `mode: 'sync'` gives you the official in-request behavior behind the same API when that's genuinely what you want.
 
 ## 4. Orchestrator-workers
 

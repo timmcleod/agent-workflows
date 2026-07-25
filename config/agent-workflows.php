@@ -24,8 +24,8 @@ return [
     |
     | Workflow steps execute as queued jobs. By default they use your
     | application's default queue connection and queue. Override here to
-    | isolate agent workflows onto their own queue (recommended with
-    | Horizon so long-running agent steps don't starve other jobs).
+    | isolate agent workflows onto their own queue so long-running agent
+    | steps don't starve your application's other jobs.
     |
     */
 
