@@ -52,7 +52,7 @@ return $workflow
     ->step(LogResolution::class);
 ```
 
-The condition is evaluated against **checkpointed** state, the decision is recorded (`steps.{id}.branch`) for auditing, and the workflow continues sequentially after whichever branch ran. For *conversation-level* routing that outlives the request — the customer replies tomorrow and should reach the specialist, not triage — see [handoffs](../README.md#handoffs).
+The condition is evaluated against **checkpointed** state, the decision is recorded (`steps.{id}.branch`) for auditing, and the workflow continues sequentially after whichever branch ran.
 
 ## 3. Parallelization
 
@@ -128,7 +128,7 @@ The same mechanism absorbs the SDK's tool-approval flow: when an agent step paus
 | Pattern | Official mechanism | What durability adds |
 | ------------------- | -------------------- | ------------------------------------------------------------- |
 | Prompt chaining | `Pipeline` | Checkpoint per step; retry the failed step, not the workflow |
-| Routing | `match` per request | Decision recorded in state; conversation handoffs persist |
+| Routing | `match` per request | Decision evaluated against, and recorded in, checkpointed state |
 | Parallelization | `Concurrency::run()` | `Bus::batch` fan-out; queue-distributed; merge with conflicts |
 | Orchestrator-workers | Sub-agents as tools | Unchanged — wrapped in a checkpointed, auditable step |
 | Evaluator-optimizer | `while` loop | Every iteration checkpointed, capped, and audited |

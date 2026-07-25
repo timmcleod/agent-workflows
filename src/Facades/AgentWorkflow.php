@@ -3,7 +3,6 @@
 namespace TimMcLeod\AgentWorkflows\Facades;
 
 use Illuminate\Support\Facades\Facade;
-use TimMcLeod\AgentWorkflows\Handoffs\HandoffManager;
 use TimMcLeod\AgentWorkflows\Testing\WorkflowFake;
 use TimMcLeod\AgentWorkflows\WorkflowManager;
 use TimMcLeod\AgentWorkflows\WorkflowRegistry;
@@ -11,8 +10,6 @@ use TimMcLeod\AgentWorkflows\WorkflowRegistry;
 /**
  * @method static \TimMcLeod\AgentWorkflows\WorkflowDefinition register(\TimMcLeod\AgentWorkflows\Workflow|string $workflow)
  * @method static \TimMcLeod\AgentWorkflows\Models\WorkflowRun start(string $name, array<string, mixed> $input = [], ?object $participant = null)
- * @method static \Laravel\Ai\Contracts\Agent resolveAgentFor(string $conversationId, ?string $default = null)
- * @method static \TimMcLeod\AgentWorkflows\Models\ConversationOwner transferConversation(string $conversationId, string $agent)
  *
  * @see WorkflowManager
  */
@@ -24,7 +21,7 @@ class AgentWorkflow extends Facade
      */
     public static function fake(): WorkflowFake
     {
-        $fake = new WorkflowFake(app(WorkflowRegistry::class), app(HandoffManager::class));
+        $fake = new WorkflowFake(app(WorkflowRegistry::class));
 
         $fake->subscribe();
 

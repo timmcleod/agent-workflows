@@ -49,7 +49,6 @@ return [
         'runs' => 'agent_workflow_runs',
         'steps' => 'agent_workflow_steps',
         'interrupts' => 'agent_workflow_interrupts',
-        'conversation_owners' => 'agent_conversation_owners',
     ],
 
     /*

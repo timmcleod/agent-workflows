@@ -11,7 +11,6 @@ return new class extends Migration
         $runs = config('agent-workflows.tables.runs', 'agent_workflow_runs');
         $steps = config('agent-workflows.tables.steps', 'agent_workflow_steps');
         $interrupts = config('agent-workflows.tables.interrupts', 'agent_workflow_interrupts');
-        $owners = config('agent-workflows.tables.conversation_owners', 'agent_conversation_owners');
 
         Schema::create($runs, function (Blueprint $table) {
             $table->ulid('id')->primary();
@@ -62,17 +61,10 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        Schema::create($owners, function (Blueprint $table) {
-            $table->id();
-            $table->string('conversation_id', 36)->unique();
-            $table->string('agent');
-            $table->timestamps();
-        });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists(config('agent-workflows.tables.conversation_owners', 'agent_conversation_owners'));
         Schema::dropIfExists(config('agent-workflows.tables.interrupts', 'agent_workflow_interrupts'));
         Schema::dropIfExists(config('agent-workflows.tables.steps', 'agent_workflow_steps'));
         Schema::dropIfExists(config('agent-workflows.tables.runs', 'agent_workflow_runs'));

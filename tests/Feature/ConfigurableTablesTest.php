@@ -3,7 +3,6 @@
 use Illuminate\Support\Facades\Schema;
 use TimMcLeod\AgentWorkflows\Enums\RunStatus;
 use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
-use TimMcLeod\AgentWorkflows\Models\ConversationOwner;
 use TimMcLeod\AgentWorkflows\Models\WorkflowInterrupt;
 use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
 use TimMcLeod\AgentWorkflows\Models\WorkflowStep;
@@ -15,13 +14,11 @@ it('reads table names from the config', function () {
         'runs' => 'wf_runs',
         'steps' => 'wf_steps',
         'interrupts' => 'wf_interrupts',
-        'conversation_owners' => 'wf_conversation_owners',
     ]);
 
     expect((new WorkflowRun)->getTable())->toBe('wf_runs')
         ->and((new WorkflowStep)->getTable())->toBe('wf_steps')
-        ->and((new WorkflowInterrupt)->getTable())->toBe('wf_interrupts')
-        ->and((new ConversationOwner)->getTable())->toBe('wf_conversation_owners');
+        ->and((new WorkflowInterrupt)->getTable())->toBe('wf_interrupts');
 });
 
 it('migrates and runs workflows against custom table names', function () {
@@ -29,7 +26,6 @@ it('migrates and runs workflows against custom table names', function () {
         'runs' => 'wf_runs',
         'steps' => 'wf_steps',
         'interrupts' => 'wf_interrupts',
-        'conversation_owners' => 'wf_conversation_owners',
     ]);
 
     $migration = include __DIR__.'/../../database/migrations/0001_01_01_000000_create_agent_workflows_tables.php';

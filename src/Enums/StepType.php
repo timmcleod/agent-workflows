@@ -11,5 +11,4 @@ enum StepType: string
     case Evaluate = 'evaluate';
     case AwaitHuman = 'await_human';
     case AwaitEvent = 'await_event';
-    case Handoff = 'handoff';
 }

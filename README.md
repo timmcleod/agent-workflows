@@ -15,7 +15,7 @@ This package is that pile, done once, properly, on the substrate Laravel already
 
 Already know the multi-agent space? This package deliberately adopts the vocabulary of the five patterns from [Laravel's official multi-agent guidance](https://laravel.com/blog/building-multi-agent-workflows-with-the-laravel-ai-sdk) and makes each one crash-safe: see [The five patterns, made durable](docs/five-patterns-made-durable.md).
 
-> **Status: pre-release.** The core engine (sequential, conditional, parallel, evaluator steps; checkpoint/retry; interrupts; agent handoffs; events; testing fakes) is implemented and tested. APIs may change before 1.0.
+> **Status: pre-release.** The core engine (sequential, conditional, parallel, evaluator steps; checkpoint/retry; interrupts; events; testing fakes) is implemented and tested. APIs may change before 1.0.
 
 ## Requirements
 
@@ -217,7 +217,6 @@ The API has three layers: **`Workflow` classes** describe processes, the **build
 | `AgentWorkflow::register($workflow)` | Registers a `Workflow` class so runs can be started and workers can execute steps. The config `workflows` array calls this for you at boot. | Rarely called directly — list classes in config instead. Direct calls are for runtime registration (tests, packages). |
 | `AgentWorkflow::start($name, input: [], participant: null)` | Creates a run: persists a `WorkflowRun` row with `input` as its initial state and dispatches the first step onto the queue. Returns the run immediately — steps execute in workers. | Anywhere something should *happen*: a controller, a command, a listener. Accepts a registered name or a `Workflow` class name. Pass `participant:` to associate the run with a user/model. |
 | `AgentWorkflow::fake()` | Swaps in a recording manager for tests. Workflows still execute; you get `assertStarted()`, `assertStepRan()`, `assertCompleted()`, etc. | Feature tests. See [Testing](#testing). |
-| `AgentWorkflow::resolveAgentFor(...)` / `transferConversation(...)` | Conversation routing after handoffs. | See [Handoffs](#handoffs) — unrelated to runs; these route *conversations*. |
 
 ### The builder — describing steps
 
@@ -226,7 +225,7 @@ All builder methods append a step and return the builder, so they chain. Every s
 | Method | What it does | When to use it |
 | --- | --- | --- |
 | `step($target, prompt:)` | Adds a step that runs a unit of work, in the order added. Each runs after the previous step's state is committed. For agent steps, `prompt:` (closure over state, or string) is what the agent gets asked. | The default. `$target` is an SDK agent class (agent step) or any invokable class (callback step) — the builder tells them apart. If in doubt, it's `step()`. |
-| `when($condition, then:, else:)` | Evaluates the closure against checkpointed state at runtime and runs one branch (or skips ahead if `else:` is omitted and the condition is false). Continues sequentially afterward; records the decision in `steps.{id}.branch`. | A fork in the road *within* a run: escalate vs auto-approve, premium vs standard handling. For routing whole conversations between agents across turns, use [handoffs](#handoffs) instead. |
+| `when($condition, then:, else:)` | Evaluates the closure against checkpointed state at runtime and runs one branch (or skips ahead if `else:` is omitted and the condition is false). Continues sequentially afterward; records the decision in `steps.{id}.branch`. | A fork in the road *within* a run: escalate vs auto-approve, premium vs standard handling. |
 | `parallel([$a, $b], merge:, mode:)` | Fans out into concurrent branches from one state snapshot, then merges and continues. Default `mode: 'batch'` is a queued `Bus::batch`; `mode: 'sync'` runs in-process. | Independent work whose results you need together (analyze financials + legal + news, then synthesize). Not for steps that depend on each other — that's a chain. Provide `merge:` when branches may write the same keys. |
 | `evaluate($target, until:, maxIterations:)` | Runs `$target` repeatedly until the predicate on state passes or the cap is hit, checkpointing each iteration. Records `iteration` and `satisfied` under `steps.{id}`. | Generate-critique-revise loops where quality is judged by a predicate (usually over a critic agent's structured output). Always set a realistic `maxIterations` — it's your token budget. |
 | `awaitHuman(reason:, schema:)` | Parks the run as `awaiting_human`, persisting the reason and validation rules for the expected response. Nothing runs until `resume()`. | Sign-offs, edits, any decision a person must make. The `schema:` is what your approval UI should collect. |
@@ -397,53 +396,6 @@ $run->resume(['toolu_1' => true]);     // true / false / Decision::edit([...]) p
 
 The agent must remember conversations (the SDK requires that to pause); decisions are checkpointed before replay, so a crash mid-resume replays them safely on retry.
 
-## Handoffs
-
-Persistent conversation routing between agents — the piece the SDK's sub-agents-as-tools pattern doesn't cover, because sub-agents answer *one* question and return. A handoff transfers *ownership of the whole conversation*, so the customer's next message (an hour or a week later) lands with the right agent.
-
-Declare who an agent may hand off to, and expose the generated `transfer_to_*` tools:
-
-```php
-use TimMcLeod\AgentWorkflows\Concerns\HasHandoffTools;
-use TimMcLeod\AgentWorkflows\Contracts\HasHandoffs;
-
-class TriageAgent implements Agent, HasHandoffs, HasTools, RemembersConversations
-{
-    use HasHandoffTools, Promptable, RemembersConversations;
-
-    public function instructions(): Stringable|string
-    {
-        return 'Triage the customer request and transfer to a specialist when appropriate.';
-    }
-
-    public function handoffs(): array
-    {
-        return [RefundsAgent::class, BillingAgent::class];
-    }
-
-    public function tools(): iterable
-    {
-        return [...$this->handoffTools(), new LookupOrderTool];
-    }
-}
-```
-
-The agent now sees `transfer_to_refunds_agent` and `transfer_to_billing_agent` tools (a target can customize its pitch with a `handoffDescription()` method). When the model calls one, the package records the target as the conversation's owner — no SDK changes, just an event listener watching for the synthetic tool calls.
-
-On the next user turn, route to whoever owns the conversation:
-
-```php
-$agent = AgentWorkflow::resolveAgentFor($conversationId, default: TriageAgent::class);
-
-$response = $agent->continue($conversationId, $user)->prompt($request->input('message'));
-```
-
-Transfers can also be made manually (an operator reassigning a conversation), and every transfer fires `ConversationTransferred` with the old and new owner:
-
-```php
-AgentWorkflow::transferConversation($conversationId, RefundsAgent::class);
-```
-
 ## Agent steps
 
 Any `laravel/ai` agent class can be a step — agents stay plain SDK classes with no package-specific code on them. The step's prompt is defined where the step is, so the same agent can be asked different things in different workflows:
@@ -589,7 +541,7 @@ What to know once workflows run in production:
 ## What this package is not
 
 - **Not an arbitrary graph engine.** Sequential + conditional + parallel + loop + interrupt covers the overwhelming majority of production workflows. No cycles-with-reducers, no time-travel debugging.
-- **Not a group-chat / free-form agent-debate framework.** The SDK's orchestrator-workers (sub-agents as tools) plus handoffs cover the useful cases.
+- **Not a group-chat / free-form agent-debate framework.** The SDK's orchestrator-workers (sub-agents as tools) cover the useful cases.
 - **Not a fork or patch of `laravel/ai`.** It composes the SDK's public API only, behind a single adapter seam.
 
 ## License
