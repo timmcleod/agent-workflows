@@ -16,7 +16,29 @@ class WorkflowDefinition
     /** @var array<int, string> */
     protected array $reservedIds = [];
 
-    public function __construct(public readonly string $name) {}
+    /**
+     * @param  class-string<WorkflowState>  $stateClass
+     */
+    public function __construct(
+        public readonly string $name,
+        public readonly string $stateClass = WorkflowState::class,
+    ) {
+        if (! is_a($stateClass, WorkflowState::class, true)) {
+            throw new InvalidArgumentException(
+                "A workflow state class must be or extend WorkflowState; [{$stateClass}] given."
+            );
+        }
+    }
+
+    /**
+     * Hydrate a state instance of this workflow's declared state class.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function makeState(array $data = []): WorkflowState
+    {
+        return ($this->stateClass)::make($data);
+    }
 
     /**
      * Append a step that runs a unit of work. Agent classes become agent

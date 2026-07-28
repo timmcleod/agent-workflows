@@ -18,13 +18,18 @@ class StateMerger
      *
      * @param  array<string, mixed>  $input  state snapshot the branches started from
      * @param  array<string, array<string, mixed>>  $branchStates  keyed by branch step id
+     * @param  class-string<WorkflowState>  $stateClass
      */
-    public function merge(ParallelStepDefinition $step, array $input, array $branchStates): WorkflowState
-    {
+    public function merge(
+        ParallelStepDefinition $step,
+        array $input,
+        array $branchStates,
+        string $stateClass = WorkflowState::class,
+    ): WorkflowState {
         if ($step->merge !== null) {
             $merged = ($step->merge)($branchStates, $input);
 
-            return $merged instanceof WorkflowState ? $merged : WorkflowState::make($merged);
+            return $merged instanceof WorkflowState ? $merged : $stateClass::make($merged);
         }
 
         $merged = $input;
@@ -48,6 +53,6 @@ class StateMerger
             }
         }
 
-        return WorkflowState::make($merged);
+        return $stateClass::make($merged);
     }
 }

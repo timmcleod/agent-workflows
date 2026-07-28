@@ -317,7 +317,7 @@ class WorkflowStepJob implements ShouldQueue
             $results,
         );
 
-        $merged = $this->attempt($stepRow, fn () => app(StateMerger::class)->merge($step, $state->all(), $branchStates));
+        $merged = $this->attempt($stepRow, fn () => app(StateMerger::class)->merge($step, $state->all(), $branchStates, $definition->stateClass));
 
         app(Progression::class)->complete($run, $definition, $step, $stepRow, $merged);
     }

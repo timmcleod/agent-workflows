@@ -216,6 +216,8 @@ Three conventions worth knowing:
 - Agent output lands under `steps.{step id}` (`steps.DraftReplyAgent.text`, and `.structured` for schema output).
 - `resume()` and `deliverEvent()` payloads merge into the top level.
 
+Rather not track the bag's structure by hand? `output()` addresses step results by class (`$state->output(RiskAnalysisAgent::class)?->structured('riskScore')`), and a workflow can declare a `WorkflowState` subclass with typed, semantic accessors (`$state->isHighRisk()`) that the engine hydrates for every step, prompt, and condition. Both are covered in **[Typed workflow state](docs/typed-state.md)**.
+
 ## Method reference
 
 The API has three layers: **`Workflow` classes** describe processes, the **builder** (inside `build()`) describes their steps, and the **run model** is how you act on one execution later. In short: the class describes, `start()` executes, everything on the builder shapes *what will happen*, and everything on the run shapes *what happens next for that one run*.
@@ -491,10 +493,11 @@ The full set, all under `TimMcLeod\AgentWorkflows\Events`:
 
 Every workflow is a class extending `Workflow` with a `build()` method (see the [quick start](#quick-start-your-first-workflow-end-to-end) for the full flow: `php artisan make:agent-workflow`, then list the class in the config `workflows` array).
 
-Two details worth knowing:
+Three details worth knowing:
 
 - A workflow registers under the kebab-cased class name (`ContractReview` → `contract-review`); override `name()` to choose your own. Runs store this name, so treat it as stable once runs exist.
 - `AgentWorkflow::start()` accepts the class name (`ContractReview::class` — type-safe, refactor-friendly) or the registered string name; both reach the same definition.
+- Override `stateClass()` to hydrate a [typed state class](docs/typed-state.md) for every step of this workflow.
 
 ## Deploys and definition drift
 

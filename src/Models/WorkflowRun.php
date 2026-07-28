@@ -16,6 +16,7 @@ use TimMcLeod\AgentWorkflows\Events\WorkflowCancelled;
 use TimMcLeod\AgentWorkflows\Events\WorkflowResumed;
 use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
 use TimMcLeod\AgentWorkflows\Jobs\WorkflowStepJob;
+use TimMcLeod\AgentWorkflows\WorkflowRegistry;
 use TimMcLeod\AgentWorkflows\WorkflowState;
 
 /**
@@ -79,8 +80,19 @@ class WorkflowRun extends Model
         return $this->morphTo();
     }
 
+    /**
+     * The run's checkpointed state, hydrated as the workflow's declared
+     * state class. Falls back to the base WorkflowState when the workflow
+     * is not registered in this process (drifted or removed definitions).
+     */
     public function workflowState(): WorkflowState
     {
+        $registry = app(WorkflowRegistry::class);
+
+        if ($registry->has($this->name)) {
+            return $registry->get($this->name)->makeState($this->state ?? []);
+        }
+
         return WorkflowState::make($this->state ?? []);
     }
 

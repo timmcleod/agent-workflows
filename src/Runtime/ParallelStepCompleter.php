@@ -63,7 +63,7 @@ class ParallelStepCompleter
         }
 
         try {
-            $merged = $this->merger->merge($step, $run->state ?? [], $branchStates);
+            $merged = $this->merger->merge($step, $run->state ?? [], $branchStates, $definition->stateClass);
         } catch (StateMergeConflictException $e) {
             $this->fail($runId, $stepId, $stepRowId, $e);
 

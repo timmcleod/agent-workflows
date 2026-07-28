@@ -27,8 +27,21 @@ abstract class Workflow
      */
     abstract public function build(WorkflowDefinition $workflow): WorkflowDefinition;
 
+    /**
+     * The state class hydrated for every step, prompt closure, condition,
+     * and predicate of this workflow. Override with a WorkflowState subclass
+     * to give the run's state typed, semantic accessors; the underlying
+     * storage and checkpoint format are unchanged.
+     *
+     * @return class-string<WorkflowState>
+     */
+    public function stateClass(): string
+    {
+        return WorkflowState::class;
+    }
+
     public function definition(): WorkflowDefinition
     {
-        return $this->build(new WorkflowDefinition($this->name()));
+        return $this->build(new WorkflowDefinition($this->name(), $this->stateClass()));
     }
 }

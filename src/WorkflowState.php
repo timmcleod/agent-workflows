@@ -92,6 +92,23 @@ class WorkflowState implements Arrayable, JsonSerializable
     }
 
     /**
+     * A step's checkpointed output, addressed by step class or id, so
+     * callers never write "steps.X.structured.Y" paths by hand:
+     *
+     *     $state->output(RiskAnalysisAgent::class)?->structured('riskScore')
+     *
+     * Null when the step has not produced a checkpoint yet.
+     */
+    public function output(string $step): ?Support\StepOutput
+    {
+        $id = class_exists($step) ? class_basename($step) : $step;
+
+        $raw = $this->get('steps.'.$id);
+
+        return is_array($raw) ? new Support\StepOutput($raw) : null;
+    }
+
+    /**
      * A stable hash of the state contents, recorded per step for auditing.
      */
     public function hash(): string
