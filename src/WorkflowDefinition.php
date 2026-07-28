@@ -233,6 +233,17 @@ class WorkflowDefinition
     }
 
     /**
+     * A renderable graph of the definition: rows of nodes plus labelled
+     * edges, for dashboards and diagram tooling.
+     *
+     * @return array{name: string, hash: string, rows: array<int, array<int, string>>, nodes: array<string, array<string, mixed>>, edges: array<int, array{from: string, to: string, label: string|null}>}
+     */
+    public function toGraph(): array
+    {
+        return (new Support\GraphSerializer)->serialize($this);
+    }
+
+    /**
      * A stable hash of the definition, stored on each run at start time so
      * definition drift across deploys can be detected on resume. Closure
      * bodies (conditions, predicates, merge strategies) are not hashed —
