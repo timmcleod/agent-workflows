@@ -2,6 +2,14 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
+## v0.9.0 — 2026-07-28
+
+**`awaitHuman()` timeouts.** Additive; **existing installs must re-run the migration** to pick up the interrupts table's `timeout_at` column.
+
+- `awaitHuman(..., timeout:, timeoutResponse:)` — `timeout:` (seconds or any `DateInterval`) is the wait's SLA, enforced by the scheduled `agent-workflows:sweep` command. With a `timeoutResponse:`, the run resumes with that payload (validated against the schema like any human answer); without one, the run fails at the gate. `$run->retry()` re-arms the same wait with a fresh deadline.
+- The interrupt row records `timeout_at`, so approval UIs can show the deadline.
+- The timeout and timeout response count toward the definition hash; the reason remains cosmetic.
+
 ## v0.8.0 — 2026-07-28
 
 **Typed workflow state.** Additive, no breaking changes. See [docs/typed-state.md](docs/typed-state.md).

@@ -59,13 +59,20 @@ class Interrupter
                 ->latest('id')
                 ->first();
 
-            $interrupt ??= $run->interrupts()->create([
-                'step_id' => $step->id,
-                'type' => $pending->type,
-                'reason' => $pending->reason,
-                'response_schema' => $pending->schema,
-                'context' => $pending->context,
-            ]);
+            if ($interrupt !== null) {
+                // Re-parking on an existing wait (a retry after a timeout
+                // failure, a duplicate delivery) re-arms its deadline.
+                $interrupt->update(['timeout_at' => $pending->timeoutAt]);
+            } else {
+                $interrupt = $run->interrupts()->create([
+                    'step_id' => $step->id,
+                    'type' => $pending->type,
+                    'reason' => $pending->reason,
+                    'response_schema' => $pending->schema,
+                    'context' => $pending->context,
+                    'timeout_at' => $pending->timeoutAt,
+                ]);
+            }
 
             $stepRow->update([
                 'status' => StepStatus::Interrupted,

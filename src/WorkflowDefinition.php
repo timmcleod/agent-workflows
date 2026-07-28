@@ -2,6 +2,7 @@
 
 namespace TimMcLeod\AgentWorkflows;
 
+use Carbon\CarbonInterval;
 use Closure;
 use InvalidArgumentException;
 use Laravel\Ai\Contracts\Agent;
@@ -164,14 +165,40 @@ class WorkflowDefinition
      * (Laravel validation rules); resume() validates the human's payload
      * against the schema and merges it into state.
      *
+     * With a timeout, the scheduled sweeper acts on runs still waiting when
+     * it expires: given a timeoutResponse, the run resumes with that payload
+     * (an auto-decision, validated like any other); without one, the run
+     * fails at this step — retry() re-arms the gate with a fresh deadline.
+     *
      * @param  array<string, mixed>|null  $schema
+     * @param  int|\DateInterval|null  $timeout  seconds, or any DateInterval
+     * @param  array<string, mixed>|null  $timeoutResponse
      */
-    public function awaitHuman(?string $reason = null, ?array $schema = null, ?string $as = null): static
-    {
+    public function awaitHuman(
+        ?string $reason = null,
+        ?array $schema = null,
+        int|\DateInterval|null $timeout = null,
+        ?array $timeoutResponse = null,
+        ?string $as = null,
+    ): static {
+        if ($timeout instanceof \DateInterval) {
+            $timeout = (int) CarbonInterval::instance($timeout)->totalSeconds;
+        }
+
+        if ($timeout !== null && $timeout < 1) {
+            throw new InvalidArgumentException('An awaitHuman timeout must be at least one second.');
+        }
+
+        if ($timeoutResponse !== null && $timeout === null) {
+            throw new InvalidArgumentException('An awaitHuman timeoutResponse requires a timeout.');
+        }
+
         $this->steps[] = new AwaitHumanStepDefinition(
             $this->stepId($as ?? 'await-human:'.(count($this->steps) + 1)),
             $reason,
             $schema,
+            $timeout,
+            $timeoutResponse,
         );
 
         return $this;

@@ -57,6 +57,7 @@ return new class extends Migration
             $table->json('context')->nullable();
             $table->nullableMorphs('resolved_by');
             $table->json('resolution')->nullable();
+            $table->timestamp('timeout_at')->nullable()->index();
             $table->timestamp('resolved_at')->nullable();
             $table->timestamps();
         });

@@ -240,7 +240,7 @@ All builder methods append a step and return the builder, so they chain. Every s
 | `when($condition, then:, else:)` | Evaluates the closure against checkpointed state at runtime and runs one branch (or skips ahead if `else:` is omitted and the condition is false). Continues sequentially afterward; records the decision in `steps.{id}.branch`. | A fork in the road *within* a run: escalate vs auto-approve, premium vs standard handling. |
 | `parallel([$a, $b], merge:, mode:)` | Fans out into concurrent branches from one state snapshot, then merges and continues. Default `mode: 'batch'` is a queued `Bus::batch`; `mode: 'sync'` runs in-process. | Independent work whose results you need together (analyze financials + legal + news, then synthesize). Not for steps that depend on each other — that's a chain. Provide `merge:` when branches may write the same keys. |
 | `evaluate($target, until:, maxIterations:)` | Runs `$target` repeatedly until the predicate on state passes or the cap is hit, checkpointing each iteration. Records `iteration` and `satisfied` under `steps.{id}`. | Generate-critique-revise loops where quality is judged by a predicate (usually over a critic agent's structured output). Always set a realistic `maxIterations` — it's your token budget. |
-| `awaitHuman(reason:, schema:)` | Parks the run as `awaiting_human`, persisting the reason and validation rules for the expected response. Nothing runs until `resume()`. | Sign-offs, edits, any decision a person must make. The `schema:` is what your approval UI should collect. |
+| `awaitHuman(reason:, schema:, timeout:, timeoutResponse:)` | Parks the run as `awaiting_human`, persisting the reason and validation rules for the expected response. Nothing runs until `resume()` — or, past `timeout:`, the sweeper resumes with `timeoutResponse:` (or fails the run without one). | Sign-offs, edits, any decision a person must make. The `schema:` is what your approval UI should collect; the timeout is the decision's SLA. |
 | `awaitEvent($event)` | Parks the run as `awaiting_event` until `deliverEvent()` is called with the matching name. | Waiting on *systems* rather than people: a webhook, a payment confirmation, another job finishing. |
 
 ### The run — acting on one execution
@@ -373,6 +373,20 @@ $run->resume(['approved' => true, 'notes' => 'LGTM'], by: $request->user());
 ```
 
 The payload is validated against the schema (a `ValidationException` leaves the run parked), merged into state for the steps that follow, and the resolution — payload, who resolved it, when — is recorded on the interrupt for audit.
+
+Real processes have SLAs — a run shouldn't wait forever. Give the gate a `timeout` and the [scheduled sweeper](#operations) acts on runs still waiting when it expires:
+
+```php
+->awaitHuman(reason: 'Final sign-off required', schema: [
+    'approved' => 'required|boolean',
+    'notes' => 'nullable|string',
+], timeout: CarbonInterval::days(3), timeoutResponse: [
+    'approved' => false,
+    'notes' => 'Auto-rejected: sign-off timed out.',
+])
+```
+
+`timeout:` takes seconds or any `DateInterval` (`new DateInterval('P3D')`, `CarbonInterval::days(3)`). With a `timeoutResponse:`, the run resumes with that payload — an auto-decision, validated against the schema like any human answer. Without one, the run **fails** at the gate; `$run->retry()` re-arms the same wait with a fresh deadline, so "give them another three days" is one call.
 
 ### Wait for an application event — `awaitEvent()`
 
