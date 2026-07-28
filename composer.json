@@ -36,6 +36,9 @@
         }
     },
     "extra": {
+        "branch-alias": {
+            "dev-main": "0.7.x-dev"
+        },
         "laravel": {
             "providers": [
                 "TimMcLeod\\AgentWorkflows\\AgentWorkflowsServiceProvider"

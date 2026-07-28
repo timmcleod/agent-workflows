@@ -20,6 +20,8 @@ use TimMcLeod\AgentWorkflows\Enums\InterruptType;
  * @property int|string|null $resolved_by_id
  * @property array<string, mixed>|null $resolution
  * @property Carbon|null $resolved_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  */
 class WorkflowInterrupt extends Model
 {

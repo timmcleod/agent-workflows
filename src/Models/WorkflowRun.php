@@ -31,6 +31,8 @@ use TimMcLeod\AgentWorkflows\WorkflowState;
  * @property string|null $failure_reason
  * @property Carbon|null $started_at
  * @property Carbon|null $finished_at
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
  */
 class WorkflowRun extends Model
 {
