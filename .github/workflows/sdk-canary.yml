@@ -1,0 +1,35 @@
+name: sdk-canary
+
+# Early warning for laravel/ai churn: run the whole suite nightly against
+# the SDK's unreleased development branch. A red canary means an upcoming
+# SDK release will break the package — weeks before any user hits it.
+
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+
+    name: laravel/ai 0.x-dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Install against the SDK's dev branch
+        run: |
+          composer require "laravel/ai:0.x-dev" --no-interaction --no-update
+          composer update --prefer-dist --no-interaction
+
+      - name: Show the SDK commit under test
+        run: composer show laravel/ai | grep -E 'versions|source'
+
+      - name: Run tests
+        run: vendor/bin/pest

@@ -1,5 +1,9 @@
 # Agent Workflows for Laravel
 
+[![tests](https://github.com/timmcleod/agent-workflows/actions/workflows/tests.yml/badge.svg)](https://github.com/timmcleod/agent-workflows/actions/workflows/tests.yml)
+[![sdk-canary](https://github.com/timmcleod/agent-workflows/actions/workflows/sdk-canary.yml/badge.svg)](https://github.com/timmcleod/agent-workflows/actions/workflows/sdk-canary.yml)
+[![Latest Version](https://img.shields.io/packagist/v/timmcleod/agent-workflows)](https://packagist.org/packages/timmcleod/agent-workflows)
+
 **The [Laravel AI SDK](https://laravel.com/docs/13.x/ai-sdk) is how your app talks to an AI. This package is how your app runs a *process* that involves AI: several steps, decisions, waiting on people, and picking up where it left off.**
 
 Picture a real feature: reviewing a contract. Extract the clauses, score the risk, escalate if the risk is high, **wait for a manager to sign off**, then write the summary. With the SDK alone you can call agent one, then agent two, then hit the wall: PHP cannot wait until Tuesday for the manager to click approve. The request ends and everything the code knew is gone. And if the last step throws, the earlier steps rerun, so you pay for their tokens twice.
