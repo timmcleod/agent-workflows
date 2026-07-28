@@ -17,6 +17,16 @@ Already know the multi-agent space? This package deliberately adopts the vocabul
 
 > **Status: pre-release.** The core engine (sequential, conditional, parallel, evaluator steps; checkpoint/retry; interrupts; events; testing fakes) is implemented and tested. APIs may change before 1.0.
 
+## The dashboard
+
+Everything above is also visible in the browser. The companion [`timmcleod/agent-workflows-ui`](https://github.com/timmcleod/agent-workflows-ui) package renders each run as a live flowchart — completed steps green, the taken branch highlighted, failed attempts and retries in the audit trail — and runs parked by `awaitHuman()` get an approval form generated from the step's schema:
+
+![The dashboard: a run paused at a human sign-off gate, with a failed-then-retried step in the audit trail and the approval form generated from the step's schema](https://raw.githubusercontent.com/timmcleod/agent-workflows-ui/main/art/dashboard.png)
+
+```bash
+composer require timmcleod/agent-workflows-ui
+```
+
 ## Requirements
 
 - PHP 8.3+
