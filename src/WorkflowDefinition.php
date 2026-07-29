@@ -149,7 +149,10 @@ class WorkflowDefinition
             throw new InvalidArgumentException('maxIterations must be at least 1.');
         }
 
-        $id = $this->stepId($as ?? 'evaluate:'.class_basename($target));
+        // The default id is the bare class basename — the same id a plain
+        // step() would get — so output(Target::class) addresses the loop's
+        // checkpoints exactly like any other step's.
+        $id = $this->stepId($as ?? $target);
 
         // The body deliberately shares the evaluate step's id (see EvaluateStepDefinition).
         $body = new StepDefinition($id, $this->typeFor($target), $target, $prompt);
