@@ -37,6 +37,10 @@ class StateMerger
 
         foreach ($branchStates as $branchId => $branchState) {
             foreach ($branchState as $key => $value) {
+                if ($key === 'steps') {
+                    continue; // engine bookkeeping — merged per step id below
+                }
+
                 if (array_key_exists($key, $input) && $input[$key] === $value) {
                     continue; // unchanged from the snapshot
                 }
@@ -53,6 +57,56 @@ class StateMerger
             }
         }
 
+        $merged = $this->mergeStepOutputs($step, $input, $branchStates, $merged);
+
         return $stateClass::make($merged);
+    }
+
+    /**
+     * Merge the engine-owned "steps" subtree per step id. Every branch
+     * checkpoints its own output under the shared top-level "steps" key
+     * (steps.{branch id}), so comparing branches at the top level would
+     * flag a conflict on every fan-out of two or more agent branches.
+     * Branch step ids are disjoint by construction, making the per-id
+     * union conflict-free unless a branch writes another step's key.
+     *
+     * @param  array<string, mixed>  $input
+     * @param  array<string, array<string, mixed>>  $branchStates
+     * @param  array<string, mixed>  $merged
+     * @return array<string, mixed>
+     */
+    protected function mergeStepOutputs(
+        ParallelStepDefinition $step,
+        array $input,
+        array $branchStates,
+        array $merged,
+    ): array {
+        $writtenBy = [];
+
+        foreach ($branchStates as $branchId => $branchState) {
+            $steps = $branchState['steps'] ?? null;
+
+            if (! is_array($steps)) {
+                continue;
+            }
+
+            foreach ($steps as $stepId => $output) {
+                if (array_key_exists($stepId, $input['steps'] ?? []) && $input['steps'][$stepId] === $output) {
+                    continue; // unchanged from the snapshot
+                }
+
+                if (isset($writtenBy[$stepId]) && ($merged['steps'][$stepId] ?? null) !== $output) {
+                    throw new StateMergeConflictException(
+                        "Parallel step [{$step->id}]: branches [{$writtenBy[$stepId]}] and [{$branchId}] both wrote ".
+                        "conflicting values to state key [steps.{$stepId}]. Provide a merge closure to resolve this."
+                    );
+                }
+
+                $merged['steps'][$stepId] = $output;
+                $writtenBy[$stepId] = $branchId;
+            }
+        }
+
+        return $merged;
     }
 }
