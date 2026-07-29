@@ -555,7 +555,7 @@ Also available: `assertNotStarted()`, `assertNothingStarted()`, `assertStepDidNo
 What to know once workflows run in production:
 
 - **Isolate the queue.** Point `agent-workflows.queue.connection`/`queue.queue` at a dedicated queue so long agent turns don't starve your app's other jobs, and give it its own worker process.
-- **Give workers room.** An agent step is one full agentic turn — several LLM calls when tools are involved. Run its workers with a `--timeout` (and matching `retry_after`) sized to your slowest step, not one HTTP call.
+- **Give workers room.** An agent step is one full agentic turn — several LLM calls when tools are involved. Run its workers with a `--timeout` (and matching `retry_after`) sized to your slowest step, not one HTTP call. This matters: a `retry_after` shorter than a step makes the queue redeliver jobs whose first attempt is still executing. The engine ignores such redeliveries while the attempt looks live, but past the sweep's `stale_after` cutoff they fail the run and the original attempt's result is discarded.
 - **Schedule the sweeper.** Workers die ungracefully (OOM, SIGKILL, deploys); the sweeper recovers runs stranded that way, re-dispatching from the checkpoint (or marking them failed, per `sweep.action`):
 
   ```php

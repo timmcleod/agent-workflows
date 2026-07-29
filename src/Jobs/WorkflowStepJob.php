@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\DB;
@@ -94,6 +95,21 @@ class WorkflowStepJob implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
+        // A MaxAttemptsExceededException with a live attempt on the books
+        // is not a failure — it's the queue redelivering a job whose first
+        // attempt is still executing (retry_after shorter than the step).
+        // Failing here would poison the healthy run and discard the
+        // original attempt's paid-for result when it commits; leave
+        // staleness adjudication to the sweep, which knows the cutoff.
+        if ($exception instanceof MaxAttemptsExceededException && $this->hasRecentInFlightAttempt()) {
+            Log::warning(
+                "Agent workflow step [{$this->stepId}] of run [{$this->runId}] was redelivered while still executing; ".
+                'ignoring the redelivery. Raise the queue\'s retry_after above your slowest step to avoid this.'
+            );
+
+            return;
+        }
+
         // Conditional transition: only the run's cursor step may fail an
         // active run. This no-ops both duplicate failure reports and the
         // sync-queue case where an inner step's exception unwinds through
@@ -118,6 +134,24 @@ class WorkflowStepJob implements ShouldQueue
         if ($run !== null) {
             event(new WorkflowFailed($run, $exception));
         }
+    }
+
+    /**
+     * Whether this step has a running audit row young enough (per the
+     * sweep's staleness cutoff) to plausibly belong to a worker that is
+     * genuinely still executing.
+     */
+    protected function hasRecentInFlightAttempt(): bool
+    {
+        $staleAfter = (int) config('agent-workflows.sweep.stale_after', 600);
+
+        $run = WorkflowRun::query()->find($this->runId);
+
+        return $run !== null && $run->steps()
+            ->where('step_id', $this->stepId)
+            ->where('status', StepStatus::Running->value)
+            ->where('started_at', '>=', now()->subSeconds($staleAfter))
+            ->exists();
     }
 
     /**
