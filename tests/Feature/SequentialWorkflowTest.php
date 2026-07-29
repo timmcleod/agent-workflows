@@ -2,7 +2,9 @@
 
 use TimMcLeod\AgentWorkflows\Enums\RunStatus;
 use TimMcLeod\AgentWorkflows\Enums\StepStatus;
+use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
 use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
+use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\ArrayReturningStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\TransformStep;
@@ -60,4 +62,16 @@ it('gives duplicate step classes distinct step ids', function () {
 
     expect($run->status)->toBe(RunStatus::Completed)
         ->and($run->state['value'])->toBe(4);
+});
+
+it('rejects a callback step returning something other than WorkflowState or null', function () {
+    defineWorkflow('bad-return', fn (WorkflowDefinition $workflow) => $workflow
+        ->step(ArrayReturningStep::class));
+
+    try {
+        AgentWorkflow::start('bad-return', []);
+        $this->fail('Expected a WorkflowException.');
+    } catch (WorkflowException $e) {
+        expect($e->getMessage())->toContain('returned [array]');
+    }
 });

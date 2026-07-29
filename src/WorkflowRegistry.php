@@ -40,7 +40,11 @@ class WorkflowRegistry
     public function get(string $name): WorkflowDefinition
     {
         if (! isset($this->definitions[$name])) {
-            throw new InvalidArgumentException("Agent workflow [{$name}] is not defined.");
+            throw new InvalidArgumentException(
+                "Agent workflow [{$name}] is not defined. Definitions are registered at boot on every process ".
+                '— list the workflow class in the "workflows" array of config/agent-workflows.php so queue '.
+                'workers (not just the process that started the run) know it.'
+            );
         }
 
         return $this->definitions[$name];
