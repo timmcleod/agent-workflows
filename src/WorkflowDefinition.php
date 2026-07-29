@@ -196,12 +196,53 @@ class WorkflowDefinition
         $this->steps[] = new AwaitHumanStepDefinition(
             $this->stepId($as ?? 'await-human:'.(count($this->steps) + 1)),
             $reason,
-            $schema,
+            $schema !== null ? $this->normalizeSchema($schema) : null,
             $timeout,
             $timeoutResponse,
         );
 
         return $this;
+    }
+
+    /**
+     * Normalize a response schema so it survives JSON persistence. The
+     * schema is stored on the interrupt row and re-read at resume time, so
+     * rule objects must be reduced to their string form now — json_encode
+     * silently turns them into {} (an empty, always-passing constraint).
+     * Stringable rules (Rule::in(...), 'exists:...') cast losslessly;
+     * closures and non-Stringable rule objects (Rule::enum, Password) have
+     * no string form and are rejected outright.
+     *
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    protected function normalizeSchema(array $schema): array
+    {
+        foreach ($schema as $field => $rules) {
+            $schema[$field] = is_array($rules)
+                ? array_map(fn (mixed $rule) => $this->normalizeRule($rule, $field), $rules)
+                : $this->normalizeRule($rules, $field);
+        }
+
+        return $schema;
+    }
+
+    protected function normalizeRule(mixed $rule, string $field): mixed
+    {
+        if (is_string($rule) || is_scalar($rule) || $rule === null) {
+            return $rule;
+        }
+
+        if (is_object($rule) && method_exists($rule, '__toString')) {
+            return (string) $rule;
+        }
+
+        $type = is_object($rule) ? get_class($rule) : get_debug_type($rule);
+
+        throw new InvalidArgumentException(
+            "Schema rule for [{$field}] is a [{$type}], which cannot survive JSON persistence. ".
+            'Use string rules or Stringable rule objects (Rule::in(...), not Rule::enum(...) or closures).'
+        );
     }
 
     /**
