@@ -3,8 +3,8 @@
 namespace TimMcLeod\AgentWorkflows\Runtime;
 
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Facades\Log;
 use Throwable;
+use TimMcLeod\AgentWorkflows\Enums\RunStatus;
 use TimMcLeod\AgentWorkflows\Enums\StepStatus;
 use TimMcLeod\AgentWorkflows\Events\StepCompleted;
 use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
@@ -22,6 +22,7 @@ class BranchRunner
     public function __construct(
         protected WorkflowRegistry $registry,
         protected StepExecutors $executors,
+        protected DriftGuard $driftGuard,
     ) {}
 
     /**
@@ -35,7 +36,19 @@ class BranchRunner
             throw new WorkflowException("Workflow run [{$runId}] no longer exists.");
         }
 
+        // A cancelled, completed, or failed run must not accrue new agent
+        // turns (LLM spend, tool side effects) from branches still sitting
+        // on the queue.
+        if ($run->status->isTerminal() || $run->status === RunStatus::Failed) {
+            throw new WorkflowException(
+                "Workflow run [{$runId}] is [{$run->status->value}]; branch [{$branchId}] will not execute."
+            );
+        }
+
         $definition = $this->registry->get($run->name);
+
+        $this->driftGuard->check($run, $definition, $branchId);
+
         $parallel = $definition->findStep($parallelStepId);
 
         if (! $parallel instanceof ParallelStepDefinition) {
@@ -45,18 +58,23 @@ class BranchRunner
         $branch = $parallel->branch($branchId);
         $state = $run->workflowState();
 
-        // Duplicate delivery of a branch job must not double-execute: no-op
-        // when another worker is mid-flight, or when a concurrent claim wins
-        // the audit-row insert (unique constraint on run/step/attempt).
+        // Duplicate delivery of a branch job must not double-execute. It
+        // also must not "succeed" quietly: in sync mode the return value IS
+        // the branch's contribution to the merge, so returning the input
+        // snapshot here would complete the run with this branch's work
+        // silently missing. Throwing fails the fan-out loudly instead —
+        // retry() supersedes stale rows, so the retried fan-out claims
+        // cleanly.
         $inFlight = $run->steps()
             ->where('step_id', $branch->id)
             ->where('status', StepStatus::Running->value)
             ->exists();
 
         if ($inFlight) {
-            Log::info("Agent workflow branch [{$branch->id}] of run [{$runId}] skipped a duplicate delivery.");
-
-            return $run->state ?? [];
+            throw new WorkflowException(
+                "Branch [{$branch->id}] of run [{$runId}] already has an attempt in flight — ".
+                'a stale attempt from a crashed worker, or a concurrent duplicate delivery.'
+            );
         }
 
         try {
@@ -69,9 +87,9 @@ class BranchRunner
                 'started_at' => now(),
             ]);
         } catch (UniqueConstraintViolationException) {
-            Log::info("Agent workflow branch [{$branch->id}] of run [{$runId}] lost a concurrent claim; skipping.");
-
-            return $run->state ?? [];
+            throw new WorkflowException(
+                "Branch [{$branch->id}] of run [{$runId}] lost a concurrent claim to another worker."
+            );
         }
 
         try {

@@ -21,12 +21,12 @@ use TimMcLeod\AgentWorkflows\Enums\RunStatus;
 use TimMcLeod\AgentWorkflows\Enums\StepStatus;
 use TimMcLeod\AgentWorkflows\EvaluateStepDefinition;
 use TimMcLeod\AgentWorkflows\Events\WorkflowFailed;
-use TimMcLeod\AgentWorkflows\Exceptions\DefinitionDriftException;
 use TimMcLeod\AgentWorkflows\Interrupts\PendingInterrupt;
 use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
 use TimMcLeod\AgentWorkflows\Models\WorkflowStep;
 use TimMcLeod\AgentWorkflows\ParallelStepDefinition;
 use TimMcLeod\AgentWorkflows\Runtime\BranchRunner;
+use TimMcLeod\AgentWorkflows\Runtime\DriftGuard;
 use TimMcLeod\AgentWorkflows\Runtime\Interrupter;
 use TimMcLeod\AgentWorkflows\Runtime\ParallelStepCompleter;
 use TimMcLeod\AgentWorkflows\Runtime\Progression;
@@ -362,23 +362,6 @@ class WorkflowStepJob implements ShouldQueue
 
     protected function guardAgainstDrift(WorkflowRun $run, WorkflowDefinition $definition): void
     {
-        if ($run->version === $definition->hash()) {
-            return;
-        }
-
-        if (config('agent-workflows.definition_drift') === 'strict') {
-            throw new DefinitionDriftException(
-                "Workflow [{$run->name}] definition has changed since run [{$run->id}] started. ".
-                'Set agent-workflows.definition_drift to "loose" to resume best-effort by step name.'
-            );
-        }
-
-        if (! $definition->hasStep($this->stepId)) {
-            throw new DefinitionDriftException(
-                "Workflow [{$run->name}] definition has changed and step [{$this->stepId}] no longer exists."
-            );
-        }
-
-        Log::warning("Agent workflow run [{$run->id}] is resuming on a drifted definition of [{$run->name}].");
+        app(DriftGuard::class)->check($run, $definition, $this->stepId);
     }
 }

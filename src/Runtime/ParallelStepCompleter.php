@@ -6,6 +6,7 @@ use Throwable;
 use TimMcLeod\AgentWorkflows\Enums\RunStatus;
 use TimMcLeod\AgentWorkflows\Enums\StepStatus;
 use TimMcLeod\AgentWorkflows\Events\WorkflowFailed;
+use TimMcLeod\AgentWorkflows\Exceptions\DefinitionDriftException;
 use TimMcLeod\AgentWorkflows\Exceptions\StateMergeConflictException;
 use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
 use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
@@ -24,6 +25,7 @@ class ParallelStepCompleter
         protected WorkflowRegistry $registry,
         protected StateMerger $merger,
         protected Progression $progression,
+        protected DriftGuard $driftGuard,
     ) {}
 
     public function complete(string $runId, string $stepId, int $stepRowId): void
@@ -36,6 +38,15 @@ class ParallelStepCompleter
         }
 
         $definition = $this->registry->get($run->name);
+
+        try {
+            $this->driftGuard->check($run, $definition, $stepId);
+        } catch (DefinitionDriftException $e) {
+            $this->fail($runId, $stepId, $stepRowId, $e);
+
+            return;
+        }
+
         $step = $definition->findStep($stepId);
 
         if (! $step instanceof ParallelStepDefinition) {
@@ -45,9 +56,14 @@ class ParallelStepCompleter
         $branchStates = [];
 
         foreach ($step->branches as $branch) {
+            // Generation fence: the parallel step's audit row is created
+            // before its branch rows, so only rows with a higher id belong
+            // to THIS fan-out. Without it, a retried fan-out could merge a
+            // stale completed result from a previous generation.
             $row = $run->steps()
                 ->where('step_id', $branch->id)
                 ->where('status', StepStatus::Completed->value)
+                ->where('id', '>', $stepRowId)
                 ->orderByDesc('id')
                 ->first();
 

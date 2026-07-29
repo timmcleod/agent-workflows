@@ -274,10 +274,12 @@ class WorkflowRun extends Model
 
             $step = $run->failed_step ?? $run->current_step;
 
-            // A hard-killed worker can leave an in-flight audit row that
-            // would block the new claim; the retry supersedes it.
+            // A hard-killed worker can leave in-flight audit rows that
+            // would block the new claim — including branch rows of a
+            // parallel fan-out, which would otherwise wedge every retry
+            // as a "duplicate delivery". A failed run has no legitimate
+            // in-flight work, so the retry supersedes all of it.
             $run->steps()
-                ->where('step_id', $step)
                 ->where('status', StepStatus::Running->value)
                 ->update([
                     'status' => StepStatus::Failed->value,
