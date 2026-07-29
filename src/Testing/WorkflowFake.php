@@ -13,6 +13,7 @@ use TimMcLeod\AgentWorkflows\Events\WorkflowInterrupted;
 use TimMcLeod\AgentWorkflows\Events\WorkflowResumed;
 use TimMcLeod\AgentWorkflows\Events\WorkflowStarted;
 use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
+use TimMcLeod\AgentWorkflows\Workflow;
 use TimMcLeod\AgentWorkflows\WorkflowManager;
 
 /**
@@ -61,6 +62,8 @@ class WorkflowFake extends WorkflowManager
      */
     public function assertStarted(string $name, ?Closure $callback = null): void
     {
+        $name = $this->normalizeWorkflowName($name);
+
         $runs = $this->startedRuns($name);
 
         PHPUnit::assertNotEmpty($runs, "Workflow [{$name}] was not started.");
@@ -76,7 +79,7 @@ class WorkflowFake extends WorkflowManager
     public function assertNotStarted(string $name): void
     {
         PHPUnit::assertEmpty(
-            $this->startedRuns($name),
+            $this->startedRuns($this->normalizeWorkflowName($name)),
             "Workflow [{$name}] was started unexpectedly."
         );
     }
@@ -108,8 +111,31 @@ class WorkflowFake extends WorkflowManager
         );
     }
 
+    /**
+     * Assert a step completed exactly $times times across all runs —
+     * the assertion for "retried once", and for the engine's central
+     * no-double-execution guarantee, which assertStepRan() cannot see
+     * (it deduplicates).
+     */
+    public function assertStepRanTimes(string $step, int $times): void
+    {
+        $id = $this->normalizeStepId($step);
+
+        $actual = collect($this->stepsCompleted)
+            ->filter(fn (StepCompleted $e) => $e->step->step_id === $id)
+            ->count();
+
+        PHPUnit::assertSame(
+            $times,
+            $actual,
+            "Step [{$step}] ran {$actual} time(s); expected {$times}."
+        );
+    }
+
     public function assertCompleted(string $name): void
     {
+        $name = $this->normalizeWorkflowName($name);
+
         PHPUnit::assertTrue(
             collect($this->completed)->contains(fn (WorkflowCompleted $e) => $e->run->name === $name),
             "Workflow [{$name}] did not complete."
@@ -118,6 +144,8 @@ class WorkflowFake extends WorkflowManager
 
     public function assertFailed(string $name): void
     {
+        $name = $this->normalizeWorkflowName($name);
+
         PHPUnit::assertTrue(
             collect($this->failed)->contains(fn (WorkflowFailed $e) => $e->run->name === $name),
             "Workflow [{$name}] did not fail."
@@ -126,6 +154,8 @@ class WorkflowFake extends WorkflowManager
 
     public function assertInterrupted(string $name, ?string $reason = null): void
     {
+        $name = $this->normalizeWorkflowName($name);
+
         PHPUnit::assertTrue(
             collect($this->interrupted)->contains(function (WorkflowInterrupted $e) use ($name, $reason) {
                 return $e->run->name === $name
@@ -139,6 +169,8 @@ class WorkflowFake extends WorkflowManager
 
     public function assertResumed(string $name): void
     {
+        $name = $this->normalizeWorkflowName($name);
+
         PHPUnit::assertTrue(
             collect($this->resumed)->contains(fn (WorkflowResumed $e) => $e->run->name === $name),
             "Workflow [{$name}] was not resumed."
@@ -147,6 +179,8 @@ class WorkflowFake extends WorkflowManager
 
     public function assertCancelled(string $name): void
     {
+        $name = $this->normalizeWorkflowName($name);
+
         PHPUnit::assertTrue(
             collect($this->cancelled)->contains(fn (WorkflowCancelled $e) => $e->run->name === $name),
             "Workflow [{$name}] was not cancelled."
@@ -175,6 +209,15 @@ class WorkflowFake extends WorkflowManager
             ->unique()
             ->values()
             ->all();
+    }
+
+    /**
+     * Workflow-name assertions accept a Workflow class name (like
+     * start() does) or the registered string name.
+     */
+    protected function normalizeWorkflowName(string $name): string
+    {
+        return is_subclass_of($name, Workflow::class) ? app($name)->name() : $name;
     }
 
     protected function normalizeStepId(string $step): string
