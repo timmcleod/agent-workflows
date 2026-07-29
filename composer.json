@@ -12,10 +12,14 @@
     "require": {
         "php": "^8.3",
         "illuminate/bus": "^12.0|^13.0",
+        "illuminate/console": "^12.0|^13.0",
+        "illuminate/concurrency": "^12.0|^13.0",
         "illuminate/contracts": "^12.0|^13.0",
         "illuminate/database": "^12.0|^13.0",
+        "illuminate/events": "^12.0|^13.0",
         "illuminate/queue": "^12.0|^13.0",
         "illuminate/support": "^12.0|^13.0",
+        "illuminate/validation": "^12.0|^13.0",
         "laravel/ai": "~0.10.1"
     },
     "require-dev": {
