@@ -71,3 +71,8 @@ it('still dedupes derived ids for repeated classes with a numeric suffix', funct
 
     expect(array_map(fn ($s) => $s->id, $definition->steps()))->toBe(['TransformStep', 'TransformStep:2']);
 });
+
+it('rejects step targets that are not classes at definition time', function () {
+    expect(fn () => (new WorkflowDefinition('typo'))->step('App\Agents\Summarzie'))
+        ->toThrow(InvalidArgumentException::class, 'is not a class');
+});

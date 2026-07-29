@@ -9,10 +9,16 @@ class {{ class }} extends Workflow
 {
     /**
      * Build the workflow's steps.
+     *
+     * Step targets are laravel/ai agent classes or invokable classes.
+     * Once built, register this workflow in the "workflows" array of
+     * config/agent-workflows.php so queue workers know the definition.
      */
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
-        return $workflow
-            ->step(FirstAgent::class);
+        return $workflow;
+        // ->step(\App\Agents\YourAgent::class, prompt: fn ($state) => '...')
+        // ->awaitHuman(reason: 'Sign-off required')
+        // ->step(\App\Workflows\YourCallbackStep::class);
     }
 }

@@ -371,6 +371,16 @@ class WorkflowDefinition
      */
     protected function typeFor(string $target): StepType
     {
+        // Fail at definition time, not deep inside a queue worker: any
+        // non-Agent string would otherwise become a "callback step" —
+        // including typos.
+        if (! class_exists($target)) {
+            throw new InvalidArgumentException(
+                "Workflow [{$this->name}] step target [{$target}] is not a class. ".
+                'Step targets are agent classes or invokable classes.'
+            );
+        }
+
         return is_a($target, Agent::class, true) ? StepType::Agent : StepType::Callback;
     }
 
