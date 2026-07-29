@@ -16,6 +16,7 @@ use TimMcLeod\AgentWorkflows\Events\WorkflowCancelled;
 use TimMcLeod\AgentWorkflows\Events\WorkflowResumed;
 use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
 use TimMcLeod\AgentWorkflows\Jobs\WorkflowStepJob;
+use TimMcLeod\AgentWorkflows\Runtime\DriftGuard;
 use TimMcLeod\AgentWorkflows\WorkflowRegistry;
 use TimMcLeod\AgentWorkflows\WorkflowState;
 
@@ -123,6 +124,8 @@ class WorkflowRun extends Model
 
             $interrupt = $run->openInterrupt();
 
+            $this->guardResumeDrift($run, $interrupt);
+
             if ($interrupt->response_schema !== null) {
                 $response = Validator::make($response, $interrupt->response_schema)->validate();
             }
@@ -194,6 +197,8 @@ class WorkflowRun extends Model
                 );
             }
 
+            $this->guardResumeDrift($run, $interrupt);
+
             if ($interrupt->response_schema !== null) {
                 $payload = Validator::make($payload, $interrupt->response_schema)->validate();
             }
@@ -218,6 +223,25 @@ class WorkflowRun extends Model
         WorkflowStepJob::dispatch($this->id, $interrupt->step_id)->afterCommit();
 
         return $this->refresh();
+    }
+
+    /**
+     * Enforce the drift policy BEFORE the response is consumed. Without
+     * this, a strict-mode resume would resolve the interrupt and merge the
+     * human's answer, then fail the run when the dispatched step job hits
+     * the drift guard — the response spent, the gate gone. Throwing here
+     * rolls the whole transition back: the interrupt stays open.
+     */
+    protected function guardResumeDrift(WorkflowRun $run, WorkflowInterrupt $interrupt): void
+    {
+        $registry = app(WorkflowRegistry::class);
+
+        // Unregistered on this process: the job-level guard adjudicates.
+        if (! $registry->has($run->name)) {
+            return;
+        }
+
+        app(DriftGuard::class)->check($run, $registry->get($run->name), $interrupt->step_id);
     }
 
     /**
