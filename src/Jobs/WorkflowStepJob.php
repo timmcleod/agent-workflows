@@ -218,7 +218,7 @@ class WorkflowStepJob implements ShouldQueue
                 $step->schema,
                 timeoutAt: $step->timeout !== null ? now()->addSeconds($step->timeout) : null,
             )
-            : new PendingInterrupt(InterruptType::Event, "Waiting for event [{$step->event}].", context: ['event' => $step->event]);
+            : new PendingInterrupt(InterruptType::Event, "Waiting for event [{$step->event}].", $step->schema, context: ['event' => $step->event]);
 
         app(Interrupter::class)->interrupt($run, $step, $stepRow, $state, $pending);
     }

@@ -138,6 +138,8 @@ class WorkflowRun extends Model
 
                 $state->set("steps.{$interrupt->step_id}.approval_decisions", $response);
             } else {
+                $this->guardReservedKeys($response);
+
                 $state->merge($response);
             }
 
@@ -192,6 +194,12 @@ class WorkflowRun extends Model
                 );
             }
 
+            if ($interrupt->response_schema !== null) {
+                $payload = Validator::make($payload, $interrupt->response_schema)->validate();
+            }
+
+            $this->guardReservedKeys($payload);
+
             $interrupt->fill([
                 'resolution' => $payload,
                 'resolved_at' => now(),
@@ -210,6 +218,24 @@ class WorkflowRun extends Model
         WorkflowStepJob::dispatch($this->id, $interrupt->step_id)->afterCommit();
 
         return $this->refresh();
+    }
+
+    /**
+     * External payloads merge into the same top-level namespace that holds
+     * the engine's own checkpoints. A colliding "steps" key would replace
+     * the whole subtree — forged agent outputs, planted approval decisions,
+     * reset evaluate counters — so it is reserved.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    protected function guardReservedKeys(array $payload): void
+    {
+        if (array_key_exists('steps', $payload)) {
+            throw new WorkflowException(
+                'Payload key [steps] is reserved for engine checkpoints and cannot be merged into run state. '.
+                'Whitelist the fields you accept — never pass raw request input.'
+            );
+        }
     }
 
     protected function openInterrupt(): WorkflowInterrupt

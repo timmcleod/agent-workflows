@@ -245,7 +245,7 @@ All builder methods append a step and return the builder, so they chain. Every s
 | `parallel([$a, $b], merge:, mode:)` | Fans out into concurrent branches from one state snapshot, then merges and continues. Default `mode: 'batch'` is a queued `Bus::batch`; `mode: 'sync'` runs in-process. | Independent work whose results you need together (analyze financials + legal + news, then synthesize). Not for steps that depend on each other — that's a chain. Provide `merge:` when branches may write the same keys. |
 | `evaluate($target, until:, maxIterations:)` | Runs `$target` repeatedly until the predicate on state passes or the cap is hit, checkpointing each iteration. Records `iteration` and `satisfied` under `steps.{id}`. | Generate-critique-revise loops where quality is judged by a predicate (usually over a critic agent's structured output). Always set a realistic `maxIterations` — it's your token budget. |
 | `awaitHuman(reason:, schema:, timeout:, timeoutResponse:)` | Parks the run as `awaiting_human`, persisting the reason and validation rules for the expected response. Nothing runs until `resume()` — or, past `timeout:`, the sweeper resumes with `timeoutResponse:` (or fails the run without one). | Sign-offs, edits, any decision a person must make. The `schema:` is what your approval UI should collect; the timeout is the decision's SLA. |
-| `awaitEvent($event)` | Parks the run as `awaiting_event` until `deliverEvent()` is called with the matching name. | Waiting on *systems* rather than people: a webhook, a payment confirmation, another job finishing. |
+| `awaitEvent($event, schema:)` | Parks the run as `awaiting_event` until `deliverEvent()` is called with the matching name. With `schema:`, the payload is validated and stripped to the declared fields. | Waiting on *systems* rather than people: a webhook, a payment confirmation, another job finishing. |
 
 ### The run — acting on one execution
 
@@ -409,7 +409,15 @@ return $workflow
 $run->deliverEvent('payment.confirmed', ['amount' => $payment->amount]);
 ```
 
-Delivering the wrong event name throws; the payload is merged into state.
+Delivering the wrong event name throws; the payload is merged into state. Like `awaitHuman()`, the step takes an optional `schema:` (Laravel validation rules) — the delivered payload is validated against it, and only the declared fields reach state:
+
+```php
+->awaitEvent('payment.confirmed', schema: ['amount' => 'required|integer|min:1'])
+```
+
+### Treat resume and event payloads as untrusted input
+
+`resume()` and `deliverEvent()` payloads merge into the same state bag your steps, prompts, and conditions read. **Whitelist the fields you accept — never pass raw request input** like `$request->all()`: a caller who controls the payload controls whatever state keys it writes (including the `prompt` key that agent steps fall back to). The engine-owned `steps` key is reserved and rejected outright, and schema-validated payloads are stripped to their declared fields. Authorizing *who* may resume a run or deliver an event is your application's job — put these calls behind your usual auth middleware and policies.
 
 ### SDK tool approvals become workflow interrupts
 

@@ -247,13 +247,18 @@ class WorkflowDefinition
 
     /**
      * Pause the run until a named application event is delivered via
-     * $run->deliverEvent($event, $payload).
+     * $run->deliverEvent($event, $payload). With a schema (Laravel
+     * validation rules), the delivered payload is validated before it
+     * merges into state.
+     *
+     * @param  array<string, mixed>|null  $schema
      */
-    public function awaitEvent(string $event, ?string $as = null): static
+    public function awaitEvent(string $event, ?string $as = null, ?array $schema = null): static
     {
         $this->steps[] = new AwaitEventStepDefinition(
             $this->stepId($as ?? 'await-event:'.$event),
             $event,
+            $schema !== null ? $this->normalizeSchema($schema) : null,
         );
 
         return $this;
