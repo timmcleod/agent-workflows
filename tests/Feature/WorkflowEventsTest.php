@@ -45,3 +45,20 @@ it('fires WorkflowFailed when a step fails', function () {
         return $e->run->name === 'doomed' && $e->exception?->getMessage() === 'Flaky step exploded.';
     });
 });
+
+it('serializes events for queued listeners without the Throwable', function () {
+    defineWorkflow('serializable', fn (WorkflowDefinition $workflow) => $workflow
+        ->step(PrepareStep::class));
+
+    $run = AgentWorkflow::start('serializable', []);
+
+    $failed = new WorkflowFailed($run, new RuntimeException('boom'));
+
+    /** @var WorkflowFailed $revived */
+    $revived = unserialize(serialize($failed));
+
+    // The model came back by identifier; the unserializable Throwable is
+    // deliberately dropped — queued listeners read failure_reason instead.
+    expect($revived->run->id)->toBe($run->id)
+        ->and($revived->exception)->toBeNull();
+});
