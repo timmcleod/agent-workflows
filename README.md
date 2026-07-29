@@ -462,7 +462,7 @@ Three things follow from "the loop lives inside one queued job":
 
 - **Give workers room.** A tool-heavy agent makes several LLM calls in one job, so run workers with a `--timeout` (and matching `retry_after`) that covers the whole turn, not one call.
 - **The step is the retry unit.** A failure at tool-round 3 retries the whole step from round 1. There is no mid-loop checkpoint, so keep tools idempotent, or pull side-effecting work into its own callback step after the agent.
-- **Approval pauses are the exception.** A tool that [requires approval](#sdk-tool-approvals-become-workflow-interrupts) mid-loop parks the run; on `resume()` the loop continues from where it paused, not from round 1.
+- **Approval pauses are the exception.** A tool that [requires approval](#sdk-tool-approvals-become-workflow-interrupts) mid-loop parks the run; on `resume()` the loop continues from where it paused, not from round 1. This works for sequential steps and `evaluate()` bodies. **Inside `parallel()` branches, approval-gated agents are not supported** — a branch that pauses fails the run with an explicit error; keep approval-gated agents in sequential steps before or after the fan-out.
 
 ## Inspecting runs
 

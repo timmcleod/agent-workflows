@@ -76,6 +76,19 @@ class BranchRunner
 
         try {
             $result = $this->executors->for($branch)->execute($branch, $state);
+
+            // A branch cannot park the run: fan-out state lives in N
+            // concurrent jobs and the engine has no multi-interrupt story
+            // yet. Completing the branch mid-turn would silently drop the
+            // approval, so fail loudly instead (the batch fails the run at
+            // the parallel step).
+            if ($result->interrupt !== null) {
+                throw new WorkflowException(
+                    "Branch [{$branch->id}] of parallel step [{$parallelStepId}] paused on tool approvals. ".
+                    'Interrupts are not supported inside parallel branches — move the approval-gated agent '
+                    .'to a sequential step before or after the fan-out.'
+                );
+            }
         } catch (Throwable $e) {
             $stepRow->update([
                 'status' => StepStatus::Failed,

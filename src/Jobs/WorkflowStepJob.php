@@ -252,6 +252,15 @@ class WorkflowStepJob implements ShouldQueue
 
         $result = $this->attempt($stepRow, fn () => app(StepExecutors::class)->for($step->body)->execute($step->body, $state));
 
+        // The body paused mid-turn (agent tool approvals): park the run at
+        // the evaluate step without consuming an iteration. On resume the
+        // step re-runs, replays the decisions, and the loop continues.
+        if ($result->interrupt !== null) {
+            app(Interrupter::class)->interrupt($run, $step, $stepRow, $result->state, $result->interrupt);
+
+            return;
+        }
+
         $satisfied = ($step->until)($result->state);
 
         $state = $result->state
