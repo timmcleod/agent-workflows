@@ -3,6 +3,7 @@
 namespace TimMcLeod\AgentWorkflows\Console;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Throwable;
 use TimMcLeod\AgentWorkflows\AwaitHumanStepDefinition;
@@ -12,6 +13,7 @@ use TimMcLeod\AgentWorkflows\Events\WorkflowFailed;
 use TimMcLeod\AgentWorkflows\Jobs\WorkflowStepJob;
 use TimMcLeod\AgentWorkflows\Models\WorkflowInterrupt;
 use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
+use TimMcLeod\AgentWorkflows\Models\WorkflowStep;
 use TimMcLeod\AgentWorkflows\WorkflowRegistry;
 
 /**
@@ -40,68 +42,98 @@ class SweepCommand extends Command
         $action = (string) config('agent-workflows.sweep.action', 'redispatch');
         $cutoff = now()->subSeconds($staleAfter);
 
-        $stranded = WorkflowRun::query()
+        $swept = 0;
+        $stranded = 0;
+
+        // Chunked, and without the state column: a fleet crash strands runs
+        // in bulk, and this loop must not hydrate thousands of multi-KB
+        // checkpoints it never reads.
+        WorkflowRun::query()
+            ->select(['id', 'name', 'status', 'current_step', 'updated_at'])
             ->whereIn('status', [RunStatus::Pending->value, RunStatus::Running->value])
             ->where('updated_at', '<', $cutoff)
-            ->get();
+            ->chunkById(100, function ($runs) use ($action, $staleAfter, $cutoff, &$swept, &$stranded) {
+                $stranded += $runs->count();
 
-        $swept = 0;
+                // One query for the whole chunk instead of one per run.
+                $inFlightByRun = WorkflowStep::query()
+                    ->whereIn('run_id', $runs->pluck('id'))
+                    ->where('status', StepStatus::Running->value)
+                    ->orderBy('id')
+                    ->get()
+                    ->groupBy('run_id');
 
-        foreach ($stranded as $run) {
-            $inFlight = $run->steps()
-                ->where('step_id', $run->current_step)
-                ->where('status', StepStatus::Running->value)
-                ->latest('id')
-                ->first();
+                foreach ($runs as $run) {
+                    $inFlight = $inFlightByRun->get($run->id)
+                        ?->where('step_id', $run->current_step)
+                        ->last();
 
-            // A recent in-flight attempt means a worker is genuinely on it.
-            if ($inFlight !== null && $inFlight->started_at !== null && $inFlight->started_at->gte($cutoff)) {
-                continue;
-            }
-
-            // Clear the stale attempt so a fresh claim isn't blocked.
-            $inFlight?->update([
-                'status' => StepStatus::Failed,
-                'error' => 'Superseded by sweep.',
-                'finished_at' => now(),
-            ]);
-
-            if ($action === 'fail') {
-                $failed = WorkflowRun::query()
-                    ->whereKey($run->id)
-                    ->whereIn('status', [RunStatus::Pending->value, RunStatus::Running->value])
-                    ->update([
-                        'status' => RunStatus::Failed->value,
-                        'failed_step' => $run->current_step,
-                        'failure_reason' => "Stale for more than {$staleAfter} seconds; swept.",
-                        'updated_at' => now(),
-                    ]);
-
-                if ($failed === 1) {
-                    event(new WorkflowFailed($run->refresh()));
-                    $this->line("Failed stale run [{$run->id}] at step [{$run->current_step}].");
-                    $swept++;
+                    $swept += $this->sweep($run, $inFlight, $action, $staleAfter, $cutoff) ? 1 : 0;
                 }
+            });
 
-                continue;
-            }
-
-            try {
-                WorkflowStepJob::dispatch($run->id, $run->current_step);
-                $this->line("Re-dispatched run [{$run->id}] at step [{$run->current_step}].");
-                $swept++;
-            } catch (Throwable $e) {
-                // On the sync driver the re-dispatched step runs inline and
-                // its failure surfaces here; the run is marked failed by the
-                // job's own failure path. Keep sweeping the rest.
-                $this->warn("Run [{$run->id}] failed during swept execution: {$e->getMessage()}");
-                $swept++;
-            }
-        }
-
-        $this->info("Swept {$swept} of {$stranded->count()} stranded run(s).");
+        $this->info("Swept {$swept} of {$stranded} stranded run(s).");
 
         return self::SUCCESS;
+    }
+
+    protected function sweep(
+        WorkflowRun $run,
+        ?WorkflowStep $inFlight,
+        string $action,
+        int $staleAfter,
+        Carbon $cutoff,
+    ): bool {
+        // A recent in-flight attempt means a worker is genuinely on it.
+        if ($inFlight !== null && $inFlight->started_at !== null && $inFlight->started_at->gte($cutoff)) {
+            return false;
+        }
+
+        // Clear the stale attempt so a fresh claim isn't blocked.
+        $inFlight?->update([
+            'status' => StepStatus::Failed,
+            'error' => 'Superseded by sweep.',
+            'finished_at' => now(),
+        ]);
+
+        if ($action === 'fail') {
+            $failed = WorkflowRun::query()
+                ->whereKey($run->id)
+                ->whereIn('status', [RunStatus::Pending->value, RunStatus::Running->value])
+                ->update([
+                    'status' => RunStatus::Failed->value,
+                    'failed_step' => $run->current_step,
+                    'failure_reason' => "Stale for more than {$staleAfter} seconds; swept.",
+                    'updated_at' => now(),
+                ]);
+
+            if ($failed === 1) {
+                event(new WorkflowFailed($run->refresh()));
+                $this->line("Failed stale run [{$run->id}] at step [{$run->current_step}].");
+
+                return true;
+            }
+
+            return false;
+        }
+
+        // Debounce: freshen updated_at so a backlogged queue gets this run
+        // re-dispatched once per stale_after window, not once per tick —
+        // during an outage the old behavior added a duplicate job per
+        // stranded run per sweep, feeding the very backlog it waited on.
+        WorkflowRun::query()->whereKey($run->id)->update(['updated_at' => now()]);
+
+        try {
+            WorkflowStepJob::dispatch($run->id, $run->current_step);
+            $this->line("Re-dispatched run [{$run->id}] at step [{$run->current_step}].");
+        } catch (Throwable $e) {
+            // On the sync driver the re-dispatched step runs inline and
+            // its failure surfaces here; the run is marked failed by the
+            // job's own failure path. Keep sweeping the rest.
+            $this->warn("Run [{$run->id}] failed during swept execution: {$e->getMessage()}");
+        }
+
+        return true;
     }
 
     /**
@@ -113,47 +145,52 @@ class SweepCommand extends Command
      */
     protected function expireTimedOutWaits(WorkflowRegistry $registry): void
     {
-        $due = WorkflowInterrupt::query()
+        WorkflowInterrupt::query()
             ->whereNull('resolved_at')
             ->whereNotNull('timeout_at')
             ->where('timeout_at', '<=', now())
             ->whereHas('run', fn ($query) => $query->where('status', RunStatus::AwaitingHuman->value))
             ->with('run')
-            ->get();
-
-        foreach ($due as $interrupt) {
-            $run = $interrupt->run;
-            $response = $this->timeoutResponseFor($registry, $run, $interrupt);
-
-            if ($response !== null) {
-                try {
-                    $run->resume($response);
-                    $this->line("Resumed timed-out run [{$run->id}] at [{$interrupt->step_id}] with its timeout response.");
-                } catch (Throwable $e) {
-                    // A concurrent human resume, a validation error in the
-                    // configured response, or (on the sync driver) a failure
-                    // further down the run. Keep sweeping the rest.
-                    $this->warn("Run [{$run->id}] timeout resume failed: {$e->getMessage()}");
+            ->chunkById(100, function ($due) use ($registry) {
+                foreach ($due as $interrupt) {
+                    $this->expire($registry, $interrupt);
                 }
+            });
+    }
 
-                continue;
+    protected function expire(WorkflowRegistry $registry, WorkflowInterrupt $interrupt): void
+    {
+        $run = $interrupt->run;
+        $response = $this->timeoutResponseFor($registry, $run, $interrupt);
+
+        if ($response !== null) {
+            try {
+                $run->resume($response);
+                $this->line("Resumed timed-out run [{$run->id}] at [{$interrupt->step_id}] with its timeout response.");
+            } catch (Throwable $e) {
+                // A concurrent human resume, a validation error in the
+                // configured response, or (on the sync driver) a failure
+                // further down the run. Keep sweeping the rest.
+                $this->warn("Run [{$run->id}] timeout resume failed: {$e->getMessage()}");
             }
 
-            // Conditional transition: a human resuming at this instant wins.
-            $failed = WorkflowRun::query()
-                ->whereKey($run->id)
-                ->where('status', RunStatus::AwaitingHuman->value)
-                ->update([
-                    'status' => RunStatus::Failed->value,
-                    'failed_step' => $interrupt->step_id,
-                    'failure_reason' => "Timed out waiting for a human at [{$interrupt->step_id}].",
-                    'updated_at' => now(),
-                ]);
+            return;
+        }
 
-            if ($failed === 1) {
-                event(new WorkflowFailed($run->refresh()));
-                $this->line("Failed timed-out run [{$run->id}] at [{$interrupt->step_id}].");
-            }
+        // Conditional transition: a human resuming at this instant wins.
+        $failed = WorkflowRun::query()
+            ->whereKey($run->id)
+            ->where('status', RunStatus::AwaitingHuman->value)
+            ->update([
+                'status' => RunStatus::Failed->value,
+                'failed_step' => $interrupt->step_id,
+                'failure_reason' => "Timed out waiting for a human at [{$interrupt->step_id}].",
+                'updated_at' => now(),
+            ]);
+
+        if ($failed === 1) {
+            event(new WorkflowFailed($run->refresh()));
+            $this->line("Failed timed-out run [{$run->id}] at [{$interrupt->step_id}].");
         }
     }
 
