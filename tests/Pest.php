@@ -4,6 +4,7 @@ use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
 use TimMcLeod\AgentWorkflows\Tests\TestCase;
 use TimMcLeod\AgentWorkflows\Workflow;
 use TimMcLeod\AgentWorkflows\WorkflowDefinition;
+use TimMcLeod\AgentWorkflows\WorkflowRegistry;
 use TimMcLeod\AgentWorkflows\WorkflowState;
 
 pest()->extend(TestCase::class)->in('Feature', 'Unit');
@@ -16,6 +17,10 @@ pest()->extend(TestCase::class)->in('Feature', 'Unit');
  */
 function defineWorkflow(string $name, Closure $build, ?string $stateClass = null): WorkflowDefinition
 {
+    // Tests redefine names freely (e.g. to simulate a deploy changing a
+    // definition mid-run); drop any previous registration first.
+    app(WorkflowRegistry::class)->forget($name);
+
     return AgentWorkflow::register(new class($name, $build, $stateClass) extends Workflow
     {
         public function __construct(
