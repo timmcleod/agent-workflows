@@ -49,3 +49,25 @@ it('supports explicit step aliases', function () {
 
     expect(array_map(fn ($s) => $s->id, $definition->steps()))->toBe(['double', 'double-again']);
 });
+
+it('rejects a duplicate explicit alias instead of silently renaming it', function () {
+    expect(fn () => (new WorkflowDefinition('clash'))
+        ->step(PrepareStep::class, as: 'review')
+        ->step(TransformStep::class, as: 'review'))
+        ->toThrow(InvalidArgumentException::class, 'must be unique');
+});
+
+it('rejects an explicit alias that collides with a derived id', function () {
+    expect(fn () => (new WorkflowDefinition('clash'))
+        ->step(PrepareStep::class)
+        ->step(TransformStep::class, as: 'PrepareStep'))
+        ->toThrow(InvalidArgumentException::class, 'must be unique');
+});
+
+it('still dedupes derived ids for repeated classes with a numeric suffix', function () {
+    $definition = (new WorkflowDefinition('repeat'))
+        ->step(TransformStep::class)
+        ->step(TransformStep::class);
+
+    expect(array_map(fn ($s) => $s->id, $definition->steps()))->toBe(['TransformStep', 'TransformStep:2']);
+});

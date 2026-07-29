@@ -84,7 +84,7 @@ class WorkflowDefinition
         $whenFalse = $else !== null ? $this->makeStep($else, null, $elsePrompt) : null;
 
         $this->steps[] = new ConditionStepDefinition(
-            $this->stepId($as ?? 'when:'.(count($this->steps) + 1)),
+            $this->stepId($as ?? 'when:'.(count($this->steps) + 1), explicit: $as !== null),
             $condition,
             $whenTrue,
             $whenFalse,
@@ -120,7 +120,7 @@ class WorkflowDefinition
         }
 
         $this->steps[] = new ParallelStepDefinition(
-            $this->stepId($as ?? 'parallel:'.(count($this->steps) + 1)),
+            $this->stepId($as ?? 'parallel:'.(count($this->steps) + 1), explicit: $as !== null),
             $branches,
             $merge,
             $mode,
@@ -152,7 +152,7 @@ class WorkflowDefinition
         // The default id is the bare class basename — the same id a plain
         // step() would get — so output(Target::class) addresses the loop's
         // checkpoints exactly like any other step's.
-        $id = $this->stepId($as ?? $target);
+        $id = $this->stepId($as ?? $target, explicit: $as !== null);
 
         // The body deliberately shares the evaluate step's id (see EvaluateStepDefinition).
         $body = new StepDefinition($id, $this->typeFor($target), $target, $prompt);
@@ -197,7 +197,7 @@ class WorkflowDefinition
         }
 
         $this->steps[] = new AwaitHumanStepDefinition(
-            $this->stepId($as ?? 'await-human:'.(count($this->steps) + 1)),
+            $this->stepId($as ?? 'await-human:'.(count($this->steps) + 1), explicit: $as !== null),
             $reason,
             $schema !== null ? $this->normalizeSchema($schema) : null,
             $timeout,
@@ -259,7 +259,7 @@ class WorkflowDefinition
     public function awaitEvent(string $event, ?string $as = null, ?array $schema = null): static
     {
         $this->steps[] = new AwaitEventStepDefinition(
-            $this->stepId($as ?? 'await-event:'.$event),
+            $this->stepId($as ?? 'await-event:'.$event, explicit: $as !== null),
             $event,
             $schema !== null ? $this->normalizeSchema($schema) : null,
         );
@@ -363,7 +363,7 @@ class WorkflowDefinition
      */
     protected function makeStep(string $target, ?string $as = null, Closure|string|null $prompt = null): StepDefinition
     {
-        return new StepDefinition($this->stepId($as ?? $target), $this->typeFor($target), $target, $prompt);
+        return new StepDefinition($this->stepId($as ?? $target, explicit: $as !== null), $this->typeFor($target), $target, $prompt);
     }
 
     /**
@@ -398,10 +398,21 @@ class WorkflowDefinition
      * Derive a unique, readable step id from the target class (or explicit
      * alias), reserving it so steps built before being appended (branch
      * steps) still collide-check against each other.
+     *
+     * Derived ids are deduped with a numeric suffix (the same class used
+     * twice); an explicit alias that collides throws — silently renaming
+     * it would point audit rows, state paths, and output() lookups at the
+     * wrong step.
      */
-    protected function stepId(string $base): string
+    protected function stepId(string $base, bool $explicit = false): string
     {
         $id = class_exists($base) ? class_basename($base) : $base;
+
+        if ($explicit && in_array($id, $this->reservedIds, true)) {
+            throw new InvalidArgumentException(
+                "Workflow [{$this->name}] already has a step [{$id}]; explicit step aliases must be unique."
+            );
+        }
 
         $candidate = $id;
         $suffix = 2;
