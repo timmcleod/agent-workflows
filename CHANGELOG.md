@@ -2,9 +2,13 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
+## Unreleased (v0.10.0)
+
+**Migration strategy.** The base create-tables migration is now frozen at its v0.9 shape; every schema change from here on ships as its own additive migration, so upgrading is always `composer update && php artisan migrate`. This release includes a catch-up migration that adds the interrupts table's `timeout_at` column on installs migrated at v0.8 or earlier (the v0.9 "re-run the migration" instruction was not actionable — Laravel records the migration as already run).
+
 ## v0.9.0 — 2026-07-28
 
-**`awaitHuman()` timeouts.** Additive; **existing installs must re-run the migration** to pick up the interrupts table's `timeout_at` column.
+**`awaitHuman()` timeouts.** Additive. *(Correction: this entry originally said existing installs must "re-run the migration" to pick up the interrupts table's `timeout_at` column, which `php artisan migrate` will never do — v0.10 ships a catch-up migration instead; just run `php artisan migrate` after upgrading.)*
 
 - `awaitHuman(..., timeout:, timeoutResponse:)` — `timeout:` (seconds or any `DateInterval`) is the wait's SLA, enforced by the scheduled `agent-workflows:sweep` command. With a `timeoutResponse:`, the run resumes with that payload (validated against the schema like any human answer); without one, the run fails at the gate. `$run->retry()` re-arms the same wait with a fresh deadline.
 - The interrupt row records `timeout_at`, so approval UIs can show the deadline.
