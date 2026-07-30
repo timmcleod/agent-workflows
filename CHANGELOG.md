@@ -35,7 +35,9 @@ Hardening release from a full-package review: parallel × agents, parallel × cr
 - Indexes for the hot paths: `(run_id, resolved_at)` on interrupts (PostgreSQL/SQLite had no run_id index at all), `(status, updated_at)` on runs for the sweeper.
 - The sweeper chunks its scans, checks in-flight attempts with one query per chunk, and re-dispatches a stranded run once per staleness window instead of once per tick (no more feeding duplicate jobs into the backlog it's waiting out).
 
-**Migration strategy.** The base create-tables migration is now frozen at its v0.9 shape; every schema change from here on ships as its own additive migration, so upgrading is always `composer update && php artisan migrate`. This release includes a catch-up migration that adds the interrupts table's `timeout_at` column on installs migrated at v0.8 or earlier (the v0.9 "re-run the migration" instruction was not actionable — Laravel records the migration as already run).
+**No more foreign key constraints.** The `run_id` FK constraints (and their `ON DELETE CASCADE`) are gone from the steps and interrupts tables: referential integrity is enforced by the engine — child rows are only ever created through a run — so the constraints bought write overhead and lock coupling for nothing. Deleting a `WorkflowRun` **model** still removes its steps and interrupts (the cascade moved to the model layer); mass deletes via the query builder bypass model events, so delete runs through their models. An additive migration drops the constraints on existing installs.
+
+**Migration strategy.** Every schema change now ships as an additive migration, so upgrading is always `composer update && php artisan migrate` (changes to the base create-tables migration ship with a paired additive migration that converges existing installs). This release includes a catch-up migration that adds the interrupts table's `timeout_at` column on installs migrated at v0.8 or earlier (the v0.9 "re-run the migration" instruction was not actionable — Laravel records the migration as already run).
 
 ## v0.9.0 — 2026-07-28
 

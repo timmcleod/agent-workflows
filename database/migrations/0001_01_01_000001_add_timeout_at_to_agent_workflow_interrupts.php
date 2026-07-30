@@ -11,8 +11,9 @@ use Illuminate\Support\Facades\Schema;
  * broke on the first interrupt. No-op on fresh installs, whose base
  * migration already includes it.
  *
- * (From v0.10 on, every schema change ships as its own additive
- * migration; the base migration is frozen at its v0.9 shape.)
+ * (From v0.10 on, any change to the base migration ships with a paired
+ * additive migration, so existing installs always converge on the fresh
+ * install schema via `php artisan migrate`.)
  */
 return new class extends Migration
 {

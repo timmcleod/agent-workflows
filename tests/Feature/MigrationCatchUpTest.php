@@ -30,3 +30,39 @@ it('adds timeout_at to interrupts tables created before v0.9', function () {
 
     expect(Schema::hasColumn($interrupts, 'timeout_at'))->toBeTrue();
 });
+
+it('drops the run_id foreign keys from installs created before v0.10', function () {
+    // A v0.9-era schema, FK constraints included.
+    config()->set('agent-workflows.tables', [
+        'runs' => 'legacy_runs',
+        'steps' => 'legacy_steps',
+        'interrupts' => 'legacy_interrupts',
+    ]);
+
+    Schema::create('legacy_runs', function (Blueprint $table) {
+        $table->ulid('id')->primary();
+        $table->timestamps();
+    });
+
+    Schema::create('legacy_steps', function (Blueprint $table) {
+        $table->id();
+        $table->foreignUlid('run_id')->constrained('legacy_runs')->cascadeOnDelete();
+    });
+
+    Schema::create('legacy_interrupts', function (Blueprint $table) {
+        $table->id();
+        $table->foreignUlid('run_id')->constrained('legacy_runs')->cascadeOnDelete();
+    });
+
+    expect(Schema::getForeignKeys('legacy_steps'))->not->toBe([]);
+
+    $migration = require __DIR__.'/../../database/migrations/0001_01_01_000003_drop_agent_workflows_foreign_keys.php';
+
+    $migration->up();
+
+    expect(Schema::getForeignKeys('legacy_steps'))->toBe([])
+        ->and(Schema::getForeignKeys('legacy_interrupts'))->toBe([]);
+
+    // Idempotent: fresh installs (no constraints) run this as a no-op.
+    $migration->up();
+});

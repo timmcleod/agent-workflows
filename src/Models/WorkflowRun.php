@@ -47,6 +47,18 @@ class WorkflowRun extends Model
         return config('agent-workflows.tables.runs', 'agent_workflow_runs');
     }
 
+    protected static function booted(): void
+    {
+        // The schema carries no FK constraints (by design), so the cascade
+        // lives here: deleting a run takes its audit trail and interrupts
+        // with it. Note that mass deletes via the query builder bypass
+        // model events — delete runs through their models.
+        static::deleting(function (self $run) {
+            $run->steps()->delete();
+            $run->interrupts()->delete();
+        });
+    }
+
     protected function casts(): array
     {
         return [

@@ -27,9 +27,12 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        Schema::create($steps, function (Blueprint $table) use ($runs) {
+        Schema::create($steps, function (Blueprint $table) {
             $table->id();
-            $table->foreignUlid('run_id')->constrained($runs)->cascadeOnDelete();
+            // No FK constraint by design: referential integrity is enforced
+            // by the engine (rows are only ever created through a run), and
+            // cascade deletes happen at the model layer (WorkflowRun::booted).
+            $table->ulid('run_id');
             $table->string('step_id');
             $table->string('type');
             $table->string('status');
@@ -47,9 +50,9 @@ return new class extends Migration
             $table->unique(['run_id', 'step_id', 'attempt']);
         });
 
-        Schema::create($interrupts, function (Blueprint $table) use ($runs) {
+        Schema::create($interrupts, function (Blueprint $table) {
             $table->id();
-            $table->foreignUlid('run_id')->constrained($runs)->cascadeOnDelete();
+            $table->ulid('run_id');
             $table->string('step_id');
             $table->string('type')->default('human');
             $table->text('reason')->nullable();
