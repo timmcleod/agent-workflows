@@ -6,6 +6,7 @@ use Carbon\CarbonInterval;
 use Closure;
 use InvalidArgumentException;
 use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\HasStructuredOutput;
 use TimMcLeod\AgentWorkflows\Enums\StepType;
 use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
 
@@ -158,6 +159,116 @@ class WorkflowDefinition
         $body = new StepDefinition($id, $this->typeFor($target), $target, $prompt);
 
         $this->steps[] = new EvaluateStepDefinition($id, $body, $until, $maxIterations);
+
+        return $this;
+    }
+
+    /**
+     * Multi-agent debate: two or more debater agents argue the topic in
+     * rounds — openings first, rebuttals after — a structured-output judge
+     * rules on the transcript after each round, and the loop stops on
+     * consensus (or a custom until: predicate) or at the round cap.
+     *
+     * Sugar over evaluate(): each round is one iteration, one checkpoint,
+     * one audit row, and the graph stays static. The judge's verdict lands
+     * under "steps.{as}.judge", the transcript under "steps.{as}.transcript"
+     * (read it with Support\Transcript::in()).
+     *
+     * $as is required: debates are long-lived and expensive, and a
+     * positional default id would silently renumber (moving state paths and
+     * the drift hash) when an earlier step is inserted.
+     *
+     * Cost grows quadratically with $rounds — every debater is re-prompted
+     * with the growing transcript each round. $transcriptWindow bounds the
+     * debaters' prompts to the last N rounds; the judge always sees the
+     * full transcript. Size the queue's retry_after and the sweep's
+     * stale_after above the worst-case round duration (roughly
+     * debaters + 1 sequential agent calls).
+     *
+     * @param  array<int|string, class-string>  $debaters  string keys become speaker aliases
+     * @param  class-string  $judge  agent with structured output; the default predicate reads its `consensus` bool
+     * @param  int  $rounds  the round cap; hitting it is an outcome (satisfied=false), not a failure
+     * @param  Closure(WorkflowState): string|string|null  $topic  defaults to the state's "prompt" key
+     * @param  Closure(WorkflowState): bool|null  $until  replaces the default `judge.consensus === true`
+     * @param  ?int  $transcriptWindow  render only the last N rounds in debater prompts
+     * @param  Closure(WorkflowState, Support\Transcript, string): string|null  $openingPrompt
+     * @param  Closure(WorkflowState, Support\Transcript, string): string|null  $rebuttalPrompt
+     * @param  Closure(WorkflowState, Support\Transcript): string|null  $judgePrompt
+     */
+    public function debate(
+        array $debaters,
+        string $judge,
+        string $as,
+        int $rounds = 3,
+        Closure|string|null $topic = null,
+        ?Closure $until = null,
+        ?int $transcriptWindow = null,
+        ?Closure $openingPrompt = null,
+        ?Closure $rebuttalPrompt = null,
+        ?Closure $judgePrompt = null,
+    ): static {
+        if (count($debaters) < 2) {
+            throw new InvalidArgumentException(
+                "Workflow [{$this->name}] debate needs at least two debaters."
+            );
+        }
+
+        $speakers = [];
+
+        foreach ($debaters as $alias => $class) {
+            if ($this->typeFor($class) !== StepType::Agent) {
+                throw new InvalidArgumentException(
+                    "Workflow [{$this->name}] debate participant [{$class}] must be an agent class."
+                );
+            }
+
+            $speaker = is_string($alias) ? $alias : class_basename($class);
+
+            if (isset($speakers[$speaker])) {
+                throw new InvalidArgumentException(
+                    "Workflow [{$this->name}] debate has two speakers named [{$speaker}]; ".
+                    'use string keys to alias debaters of the same class.'
+                );
+            }
+
+            $speakers[$speaker] = $class;
+        }
+
+        if ($this->typeFor($judge) !== StepType::Agent || ! is_a($judge, HasStructuredOutput::class, true)) {
+            throw new InvalidArgumentException(
+                "Workflow [{$this->name}] debate judge [{$judge}] must be an agent with structured ".
+                'output — the default predicate reads a `consensus` boolean from its verdict.'
+            );
+        }
+
+        if ($rounds < 1) {
+            throw new InvalidArgumentException('A debate needs at least one round.');
+        }
+
+        if ($transcriptWindow !== null && $transcriptWindow < 1) {
+            throw new InvalidArgumentException(
+                'transcriptWindow must be at least 1, or null for the full transcript.'
+            );
+        }
+
+        $id = $this->stepId($as, explicit: true);
+
+        $this->steps[] = new EvaluateStepDefinition(
+            $id,
+            new DebateRoundDefinition(
+                $id,
+                $speakers,
+                $judge,
+                $topic,
+                $transcriptWindow,
+                defaultUntil: $until === null,
+                openingPrompt: $openingPrompt,
+                rebuttalPrompt: $rebuttalPrompt,
+                judgePrompt: $judgePrompt,
+            ),
+            $until ?? fn (WorkflowState $state): bool => $state->get('steps.'.$id.'.judge.consensus') === true,
+            $rounds,
+        );
 
         return $this;
     }

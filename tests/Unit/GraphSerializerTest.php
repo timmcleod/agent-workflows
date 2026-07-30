@@ -1,6 +1,9 @@
 <?php
 
+use TimMcLeod\AgentWorkflows\Tests\Fixtures\Agents\BearCaseAgent;
+use TimMcLeod\AgentWorkflows\Tests\Fixtures\Agents\BullCaseAgent;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Agents\SummarizeAgent;
+use TimMcLeod\AgentWorkflows\Tests\Fixtures\Agents\VerdictAgent;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\BranchAStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\BranchBStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
@@ -97,4 +100,21 @@ it('truncates string prompts into the node detail', function () {
     expect($graph['nodes']['SummarizeAgent']['detail'])
         ->toEndWith('...')
         ->and(strlen($graph['nodes']['SummarizeAgent']['detail']))->toBeLessThan(70);
+});
+
+it('renders a debate step as an evaluate-shaped node with a debate detail', function () {
+    $graph = (new WorkflowDefinition('debated'))
+        ->step(PrepareStep::class)
+        ->debate(
+            ['bull' => BullCaseAgent::class, 'bear' => BearCaseAgent::class],
+            judge: VerdictAgent::class,
+            as: 'thesis',
+            rounds: 4,
+        )
+        ->toGraph();
+
+    expect($graph['rows'])->toBe([['PrepareStep'], ['thesis']])
+        ->and($graph['nodes']['thesis']['type'])->toBe('evaluate')
+        ->and($graph['nodes']['thesis']['target'])->toBe('VerdictAgent')
+        ->and($graph['nodes']['thesis']['detail'])->toBe('debate · 2 voices · max 4 rounds');
 });

@@ -7,6 +7,7 @@ use Illuminate\Support\Str;
 use TimMcLeod\AgentWorkflows\AwaitEventStepDefinition;
 use TimMcLeod\AgentWorkflows\AwaitHumanStepDefinition;
 use TimMcLeod\AgentWorkflows\ConditionStepDefinition;
+use TimMcLeod\AgentWorkflows\DebateRoundDefinition;
 use TimMcLeod\AgentWorkflows\EvaluateStepDefinition;
 use TimMcLeod\AgentWorkflows\ParallelStepDefinition;
 use TimMcLeod\AgentWorkflows\StepDefinition;
@@ -96,6 +97,7 @@ class GraphSerializer
         [$target, $detail] = match (true) {
             $step instanceof ConditionStepDefinition => [null, 'branches on run state'],
             $step instanceof ParallelStepDefinition => [null, count($step->branches).' branches · '.$step->mode],
+            $step instanceof EvaluateStepDefinition && $step->body instanceof DebateRoundDefinition => [$step->body->judge, 'debate · '.count($step->body->debaters).' voices · max '.$step->maxIterations.' rounds'],
             $step instanceof EvaluateStepDefinition => [$step->body->target, 'loop until satisfied · max '.$step->maxIterations.'×'],
             $step instanceof AwaitHumanStepDefinition => [null, $step->reason ?? 'Waiting for a human'],
             $step instanceof AwaitEventStepDefinition => [null, 'event: '.$step->event],

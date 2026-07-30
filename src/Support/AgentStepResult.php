@@ -25,4 +25,24 @@ class AgentStepResult
     {
         return $this->pendingApprovals !== [];
     }
+
+    /**
+     * Key-wise sum of several results' usage. Multi-call step bodies (the
+     * debate round) aggregate through this so nothing outside the adapter's
+     * projection knows the SDK's usage shape.
+     *
+     * @return array<string, int>
+     */
+    public static function sum(self ...$results): array
+    {
+        $usage = [];
+
+        foreach ($results as $result) {
+            foreach ($result->usage as $key => $value) {
+                $usage[$key] = ($usage[$key] ?? 0) + $value;
+            }
+        }
+
+        return $usage;
+    }
 }
