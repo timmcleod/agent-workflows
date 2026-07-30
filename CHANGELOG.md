@@ -2,7 +2,7 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
-## Unreleased (v0.10.0)
+## v0.10.0 — 2026-07-30
 
 Hardening release from a full-package review: parallel × agents, parallel × crash recovery, interrupt payload integrity, and operational scale. Run `php artisan migrate` after upgrading.
 
