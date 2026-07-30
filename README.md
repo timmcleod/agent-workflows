@@ -371,7 +371,7 @@ return $workflow
     ->step(WriteMemoStep::class);
 ```
 
-The judge needs structured output with a `consensus` boolean (or pass your own `until:`); downstream steps read the verdict via `$state->output('thesis')?->get('judge.consensus')` and the argument via `Transcript::in($state, 'thesis')`. Costs grow quadratically with `rounds` — the full story (the raw-primitives recipe, custom protocol prompts, `transcriptWindow:`, retry semantics, operational sizing) lives in **[Agent debate](docs/agent-debate.md)**.
+The judge needs structured output with a `consensus` boolean (or pass your own `until:`); downstream steps read the verdict via `$state->output('thesis')?->get('judge.consensus')` and the argument via `Transcript::in($state, 'thesis')`. Costs grow quadratically with `rounds` — the full story (custom protocol prompts, `transcriptWindow:`, retry semantics, operational sizing) lives in **[Agent debate](docs/agent-debate.md)**.
 
 ## Human-in-the-loop
 

@@ -4,76 +4,9 @@ Two or more agents argue a topic in rounds — openings first, rebuttals after �
 
 `debate()` is sugar, not machinery. It compiles to an `evaluate()` step whose body is a package-shipped callback, so the graph stays static and hashable, drift detection works unchanged, and the dashboard renders it like any other loop. The line the package keeps: **dynamic speakers inside a static graph** — no dynamic topology, no nested step types.
 
-This doc shows the recipe built from raw primitives first, because the escape hatch matters more than the sugar: anything `debate()` doesn't do (parallel openings, a router picking speakers, exotic protocols) you can build the same way.
+Anything `debate()` doesn't do — parallel openings, a router picking speakers, an exotic protocol — can be built from the same primitives it compiles to: an `evaluate()` loop whose callback body drives the agents itself, appending to the transcript with `Support\Transcript`.
 
-## The recipe: a debate from raw primitives
-
-A debate is an `evaluate()` loop whose body runs several agents and a judge. You can write that body yourself today:
-
-```php
-// In AcquisitionReview::build():
-return $workflow
-    ->step(FetchFilingsStep::class)
-    ->evaluate(
-        MyDebateRound::class,
-        until: fn (WorkflowState $s) => $s->get('steps.thesis.judge.consensus') === true,
-        maxIterations: 4,
-        as: 'thesis',
-    )
-    ->step(WriteMemoStep::class);
-```
-
-```php
-class MyDebateRound
-{
-    public function __construct(
-        protected Container $container,
-        protected AgentAdapter $adapter,
-    ) {}
-
-    // Callback steps receive their definition second — the round reads its
-    // own id instead of hard-coding it — and may return a StepResult to
-    // report aggregated token usage.
-    public function __invoke(WorkflowState $state, StepDefinition $step): StepResult
-    {
-        // evaluate() writes the iteration counter after the body runs, so
-        // the committed count + 1 is the round now being played.
-        $round = (int) $state->get("steps.{$step->id}.iteration", 0) + 1;
-
-        $transcript = Transcript::in($state, $step->id);
-        $topic = 'Should we acquire X? Filings: '.$state->get('filings');
-        $results = [];
-
-        foreach (['bull' => BullCaseAgent::class, 'bear' => BearCaseAgent::class] as $speaker => $class) {
-            $protocol = $round === 1
-                ? 'State your opening position on the topic.'
-                : 'Rebut and revise your position, addressing the latest arguments.';
-
-            $result = $this->adapter->prompt(
-                $this->container->make($class),
-                "{$topic}\n\n{$transcript->render()}\n\n{$protocol}",
-            );
-
-            $transcript->append($speaker, $round, $result->text);
-            $results[] = $result;
-        }
-
-        $verdict = $this->adapter->prompt(
-            $this->container->make(VerdictAgent::class),
-            "{$topic}\n\n{$transcript->render()}\n\nHas the panel reached consensus?",
-        );
-
-        $state->set("steps.{$step->id}.judge", $verdict->structured);
-        $results[] = $verdict;
-
-        return new StepResult($state, AgentStepResult::sum(...$results));
-    }
-}
-```
-
-That works, and everything below is a packaged version of exactly this shape. What the recipe leaves on you: validating the judge produces `consensus` *before* burning every round, rejecting tool-approval pauses instead of checkpointing a half-spoken round, and remembering all of it next time.
-
-## The packaged version
+## Defining a debate
 
 ```php
 // In AcquisitionReview::build():
@@ -138,9 +71,9 @@ The default predicate is `judge.consensus === true`. Replace it to converge on a
 )
 ```
 
-## The group-chat variant (a recipe, deliberately)
+## The group-chat variant (deliberately not packaged)
 
-Want a router agent to pick who speaks next instead of round-robin? Build the recipe: inside your own round callback, prompt a router agent with the transcript and a roster, and let its structured choice decide which debater speaks. The graph stays static — the router is just another agent call inside the body.
+Want a router agent to pick who speaks next instead of round-robin? Build it from the primitives `debate()` compiles to: an `evaluate()` loop with your own round callback that prompts a router agent with the transcript and a roster, and lets its structured choice decide which debater speaks. The graph stays static — the router is just another agent call inside the body.
 
 This is deliberately not sugar'd. Router-selected speakers change the protocol surface (turn budgets per speaker, starvation, termination) in ways that should prove out in real workflows before the package freezes an API for them.
 
