@@ -72,6 +72,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Audit Snapshots
+    |--------------------------------------------------------------------------
+    |
+    | What each completed step's audit row records as output_state.
+    |
+    | "full"    — the entire state checkpoint (default). Easy to inspect,
+    |             but every row repeats all prior output, so storage grows
+    |             quadratically over a long run's audit trail.
+    | "minimal" — only the step's own checkpoint subtree (steps.{id}).
+    |
+    | Parallel branch rows always store the full snapshot (the merge
+    | consumes them), and interrupt rows always store the state the run
+    | parked with (approval UIs read it).
+    |
+    */
+
+    'audit' => [
+        'step_output' => env('AGENT_WORKFLOWS_AUDIT_STEP_OUTPUT', 'full'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Definition Drift
     |--------------------------------------------------------------------------
     |

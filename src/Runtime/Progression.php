@@ -67,7 +67,7 @@ class Progression
 
             $stepRow->update([
                 'status' => StepStatus::Completed,
-                'output_state' => $state->all(),
+                'output_state' => $this->auditSnapshot($step, $state),
                 'usage' => $usage,
                 'finished_at' => now(),
             ]);
@@ -90,5 +90,26 @@ class Progression
         } else {
             event(new WorkflowCompleted($run));
         }
+    }
+
+    /**
+     * What the step's audit row records as output_state. Sequential rows
+     * are pure audit data (execution always reloads from the run's
+     * checkpoint), and full snapshots grow O(n²) over a run's life —
+     * every row repeating all prior agent output. "minimal" stores just
+     * the step's own checkpoint subtree. Parallel BRANCH rows are
+     * unaffected either way: the merge consumes them (see BranchRunner).
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function auditSnapshot(StepDefinition $step, WorkflowState $state): ?array
+    {
+        if (config('agent-workflows.audit.step_output', 'full') === 'minimal') {
+            $own = $state->get('steps.'.$step->id);
+
+            return is_array($own) ? ['steps' => [$step->id => $own]] : null;
+        }
+
+        return $state->all();
     }
 }
