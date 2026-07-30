@@ -15,7 +15,14 @@ class CallbackStepExecutor implements StepExecutor
     {
         $handler = $this->container->make($step->target);
 
-        $result = $handler($state);
+        // The definition is passed second so a handler can read its own id
+        // and config; single-param handlers ignore it (PHP discards extra
+        // args to non-variadic user-defined methods).
+        $result = $handler($state, $step);
+
+        if ($result instanceof StepResult) {
+            return $result;
+        }
 
         // A handler returning anything else (a bare array is the common
         // mistake) expected its value to be checkpointed — discarding it
@@ -23,7 +30,7 @@ class CallbackStepExecutor implements StepExecutor
         if ($result !== null && ! $result instanceof WorkflowState) {
             throw new WorkflowException(
                 "Callback step [{$step->id}] returned [".get_debug_type($result).']; '.
-                'return the WorkflowState (or null to checkpoint the mutated instance).'
+                'return the WorkflowState, a StepResult, or null to checkpoint the mutated instance.'
             );
         }
 
