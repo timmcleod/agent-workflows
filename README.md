@@ -244,6 +244,7 @@ All builder methods append a step and return the builder, so they chain. Every s
 | `when($condition, then:, else:)` | Evaluates the closure against checkpointed state at runtime and runs one branch (or skips ahead if `else:` is omitted and the condition is false). Continues sequentially afterward; records the decision in `steps.{id}.branch`. | A fork in the road *within* a run: escalate vs auto-approve, premium vs standard handling. |
 | `parallel([$a, $b], merge:, mode:)` | Fans out into concurrent branches from one state snapshot, then merges and continues. Default `mode: 'batch'` is a queued `Bus::batch`; `mode: 'sync'` runs in-process. | Independent work whose results you need together (analyze financials + legal + news, then synthesize). Not for steps that depend on each other — that's a chain. Provide `merge:` when branches may write the same keys. |
 | `evaluate($target, until:, maxIterations:)` | Runs `$target` repeatedly until the predicate on state passes or the cap is hit, checkpointing each iteration. Records `iteration` and `satisfied` under `steps.{id}`. | Generate-critique-revise loops where quality is judged by a predicate (usually over a critic agent's structured output). Always set a realistic `maxIterations` — it's your token budget. |
+| `debate($debaters, judge:, as:, rounds:, topic:, until:, transcriptWindow:)` | Debater agents argue the topic in rounds; a structured-output judge rules on the transcript after each. Stops on `judge.consensus` (or your `until:`) or at `rounds`. Each round is one checkpoint; verdict under `steps.{id}.judge`, transcript under `steps.{id}.transcript`. | Adversarial analysis where one agent's blind spots are another's opening — bull vs bear, prosecution vs defense. Mind the cost: it's quadratic in `rounds`. See [Agent debate](docs/agent-debate.md). |
 | `awaitHuman(reason:, schema:, timeout:, timeoutResponse:)` | Parks the run as `awaiting_human`, persisting the reason and validation rules for the expected response. Nothing runs until `resume()` — or, past `timeout:`, the sweeper resumes with `timeoutResponse:` (or fails the run without one). | Sign-offs, edits, any decision a person must make. The `schema:` is what your approval UI should collect; the timeout is the decision's SLA. |
 | `awaitEvent($event, schema:)` | Parks the run as `awaiting_event` until `deliverEvent()` is called with the matching name. With `schema:`, the payload is validated and stripped to the declared fields. | Waiting on *systems* rather than people: a webhook, a payment confirmation, another job finishing. |
 
@@ -351,6 +352,26 @@ return $workflow
 ```
 
 The loop target both revises and scores (a structured response with `copy` and `score`), and the predicate reads the loop's own output under its step id. After the loop, `steps.{id}.iteration` holds the count and `steps.{id}.satisfied` records whether the predicate passed or the cap was hit.
+
+### Debate — `debate()`
+
+Two or more agents argue a topic in rounds while a judge rules on the transcript after each round; the loop stops on consensus or at the round cap. Sugar over `evaluate()` — every round is a checkpoint and an audit row, and a crash mid-debate resumes at the last committed round:
+
+```php
+// In AcquisitionReview::build():
+return $workflow
+    ->step(FetchFilingsStep::class)
+    ->debate(
+        ['bull' => BullCaseAgent::class, 'bear' => BearCaseAgent::class],
+        judge: VerdictAgent::class,
+        as: 'thesis',
+        rounds: 4,
+        topic: fn (WorkflowState $s) => 'Should we acquire X? Filings: '.$s->get('filings'),
+    )
+    ->step(WriteMemoStep::class);
+```
+
+The judge needs structured output with a `consensus` boolean (or pass your own `until:`); downstream steps read the verdict via `$state->output('thesis')?->get('judge.consensus')` and the argument via `Transcript::in($state, 'thesis')`. Costs grow quadratically with `rounds` — the full story (the raw-primitives recipe, custom protocol prompts, `transcriptWindow:`, retry semantics, operational sizing) lives in **[Agent debate](docs/agent-debate.md)**.
 
 ## Human-in-the-loop
 
@@ -581,7 +602,7 @@ What to know once workflows run in production:
 ## What this package is not
 
 - **Not an arbitrary graph engine.** Sequential + conditional + parallel + loop + interrupt covers the overwhelming majority of production workflows. No cycles-with-reducers, no time-travel debugging.
-- **Not a group-chat / free-form agent-debate framework.** The SDK's orchestrator-workers (sub-agents as tools) cover the useful cases.
+- **Not a free-form group-chat framework.** Structured round-robin debate with a judge is packaged ([`debate()`](docs/agent-debate.md)); router-selected speakers and open-ended agent chatter deliberately stay recipes. The SDK's orchestrator-workers (sub-agents as tools) cover the rest.
 - **Not a fork or patch of `laravel/ai`.** It composes the SDK's public API only, behind a single adapter seam.
 
 ## License

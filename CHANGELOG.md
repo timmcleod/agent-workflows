@@ -2,6 +2,25 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
+## Unreleased (v0.11.0)
+
+Feature release: durable multi-agent debate. No schema changes, no migration.
+
+**Added:**
+
+- `debate()` — two or more debater agents argue a topic in rounds (openings, then rebuttals) while a structured-output judge rules on the transcript after each round; the loop stops on `judge.consensus === true` (or a custom `until:` predicate) or at the `rounds` cap, which is an outcome (`satisfied: false`), not a failure. Compiles to `evaluate()` + a package-shipped callback body, so each round is one checkpoint and one audit row, drift hashing and the dashboard treat it as machinery they already know, and the graph stays static. `as:` is required (debates are too long-lived for positional ids). Costs grow **quadratically** with `rounds`; `transcriptWindow:` bounds the debaters' prompts to the last N rounds (the judge always sees the full transcript). Full guide, including the raw-primitives recipe it packages: [docs/agent-debate.md](docs/agent-debate.md).
+- `Support\Transcript` — a JSON-safe view over `steps.{id}.transcript` (`append()`, `entries()`, `bySpeaker()`, `round()`, `render(lastRounds:)`), for round bodies and downstream synthesis prompts.
+- `AgentStepResult::sum()` — key-wise usage aggregation for multi-call step bodies.
+- Callback steps now receive their `StepDefinition` as a second argument (read your own id/config instead of hard-coding it) and may return a `StepResult` to report token usage on the audit row.
+
+**Guard rails, priced in tokens:**
+
+- A judge whose verdict lacks a `consensus` boolean fails the debate loudly **after one round** under the default predicate (instead of silently burning every round and reporting "no consensus"); with a custom `until:` the check is waived. The judge's `HasStructuredOutput` interface is still checked at definition time, as are debater count/type, duplicate speaker names, `rounds >= 1`, and `transcriptWindow`.
+- A debater (or judge) pausing on SDK tool approvals mid-round fails the round loudly naming the participant — per-speaker decision replay doesn't exist yet, and checkpointing a half-spoken round would be worse. Move approval-gated tools outside the debate.
+- The shipped protocol prompts are versioned into the definition hash (`DebateRoundStep::PROTOCOL_VERSION`), so a package upgrade that changes them refuses to resume an in-flight debate under strict drift mode rather than silently altering the next round.
+
+**Compatibility note on the callback signature:** every single-parameter callback (`__invoke(WorkflowState $state)`) keeps working unchanged — PHP ignores the extra argument. A callback that declares an *optional second parameter* of another type (`__invoke(WorkflowState $state, ?Foo $extra = null)`) now receives the `StepDefinition` there and will TypeError; rename or retype that parameter.
+
 ## v0.10.0 — 2026-07-30
 
 Hardening release from a full-package review: parallel × agents, parallel × crash recovery, interrupt payload integrity, and operational scale. Run `php artisan migrate` after upgrading.
