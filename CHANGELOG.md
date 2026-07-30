@@ -4,6 +4,37 @@ All notable changes to `timmcleod/agent-workflows` are documented here. During 0
 
 ## Unreleased (v0.10.0)
 
+Hardening release from a full-package review: parallel × agents, parallel × crash recovery, interrupt payload integrity, and operational scale. Run `php artisan migrate` after upgrading.
+
+**Breaking (flagged per 0.x policy):**
+
+- Unaliased `evaluate()` steps are now id'd by the bare class basename (was `evaluate:{Basename}`), so `output(Target::class)` addresses the loop's checkpoints like any other step's. This changes those workflows' definition hashes — in strict drift mode, in-flight runs refuse to resume after deploying the upgrade (pass `as: 'evaluate:{Basename}'` to keep the old id).
+- `awaitHuman()` schemas containing closures or non-Stringable rule objects (`Rule::enum`, `Password::min`) now throw at definition time — they silently degraded to empty constraints through JSON persistence. Stringable rules (`Rule::in(...)`) are cast to their string form, which also corrects those definitions' hashes.
+- Duplicate explicit `as:` aliases throw instead of being silently renamed with a numeric suffix.
+- Registering a different definition under an existing workflow name throws instead of silently overwriting; `WorkflowRegistry::forget()` is the explicit escape hatch.
+- `resume()`/`deliverEvent()` payloads may no longer contain the engine-reserved `steps` key.
+- Step targets must be real classes at definition time (typos no longer become callback steps that explode in a worker).
+- A callback step returning non-null that isn't a `WorkflowState` now fails the step instead of silently discarding the value.
+- An agent pausing on tool approvals inside a `parallel()` branch now fails the run with an explicit error (it was silently recorded as a completed branch); inside `evaluate()` bodies the pause now correctly parks the run and `resume()` continues the loop.
+- Lifecycle events implement `ShouldDispatchAfterCommit`, matching the job dispatches — listeners no longer observe runs that a caller's transaction rolls back.
+
+**Fixed:**
+
+- The default parallel merge deep-merges the engine-owned `steps` subtree per step id — two or more agent branches without a `merge:` closure always conflicted on the `steps` key and could never complete.
+- Crashed parallel fan-outs are recoverable: `retry()` supersedes all in-flight audit rows (stale branch rows wedged every retry as a "duplicate delivery"), the duplicate-delivery guard throws instead of returning the input snapshot as a branch result (sync mode silently completed with a crashed branch's work missing), and the batch completer only merges branch rows from the current fan-out generation.
+- `cancel()` (or a failure) now stops queued branches from executing full agent turns against a dead run.
+- The strict definition-drift policy is enforced in parallel branch jobs and the batch completer, not just cursor steps — and in `resume()`/`deliverEvent()` *before* the response is consumed, so a strict-mode refusal leaves the gate open.
+- Queue redeliveries of steps that are still executing (retry_after shorter than the step) no longer fail the run and discard the original attempt's result.
+- Events serialize models by identifier for queued listeners; `WorkflowFailed` drops its Throwable at the serialization boundary (read `failure_reason` in queued listeners).
+
+**Added:**
+
+- `awaitEvent($event, schema:)` — validates delivered payloads and strips undeclared fields, mirroring `awaitHuman()`.
+- `assertStepRanTimes()` on the fake, and all workflow-name assertions now accept class names like `start()` does (`assertNotStarted(Flow::class)` previously *passed* even when the flow had started).
+- `audit.step_output` config: `full` (default) or `minimal` — full snapshots on every audit row grow O(n²) over a run's life.
+- Indexes for the hot paths: `(run_id, resolved_at)` on interrupts (PostgreSQL/SQLite had no run_id index at all), `(status, updated_at)` on runs for the sweeper.
+- The sweeper chunks its scans, checks in-flight attempts with one query per chunk, and re-dispatches a stranded run once per staleness window instead of once per tick (no more feeding duplicate jobs into the backlog it's waiting out).
+
 **Migration strategy.** The base create-tables migration is now frozen at its v0.9 shape; every schema change from here on ships as its own additive migration, so upgrading is always `composer update && php artisan migrate`. This release includes a catch-up migration that adds the interrupts table's `timeout_at` column on installs migrated at v0.8 or earlier (the v0.9 "re-run the migration" instruction was not actionable — Laravel records the migration as already run).
 
 ## v0.9.0 — 2026-07-28

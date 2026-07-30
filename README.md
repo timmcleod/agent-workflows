@@ -317,7 +317,7 @@ return $workflow
 
 By default branches run as a **`Bus::batch`** — durable and distributed across your queue workers. Pass `mode: 'sync'` to run them in-process via `Concurrency::run()` for request-lifetime fan-outs.
 
-Branch states are merged automatically; if two branches write different values to the same key, the run fails rather than silently losing data. Resolve conflicts with your own strategy:
+Branch states are merged automatically; if two branches write different values to the same key, the run fails rather than silently losing data. Two things to know about the default merge: agent checkpoints (`steps.*`) merge per step id, so agent branches never conflict on the engine's own bookkeeping; and the merge is a **union of branch writes** — a key a branch `forget()`s is not deleted from the merged state. For deletions, or your own conflict policy, provide a merge closure:
 
 ```php
 ->parallel(
@@ -481,7 +481,7 @@ use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
 
 $run = WorkflowRun::find($id);
 
-$run->status;          // pending | running | awaiting_human | failed | completed | cancelled
+$run->status;          // pending | running | awaiting_human | awaiting_event | failed | completed | cancelled
 $run->current_step;    // the cursor
 $run->state;           // the latest checkpoint (array)
 $run->steps;           // audit log: every attempt of every step, with
@@ -573,7 +573,8 @@ What to know once workflows run in production:
 | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `workflows`                                          | Your Workflow classes, registered at boot (workers included).               |
 | `queue.connection` / `queue.queue`                   | Route step jobs onto their own connection/queue.                            |
-| `tables.*`                                           | Rename the package's tables (runs, steps, interrupts, conversation owners). |
+| `tables.*`                                           | Rename the package's tables (runs, steps, interrupts).                      |
+| `audit.step_output`                                  | `full` (default) or `minimal` — what step audit rows snapshot as output.    |
 | `sweep.stale_after` / `sweep.action`                 | Staleness threshold (seconds) and recovery action for the sweeper.          |
 | `definition_drift`                                   | `strict` (refuse to resume a changed definition) or `loose` (by step name). |
 
