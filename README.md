@@ -58,30 +58,40 @@ Every step type in its simplest form — one acquisition review, end to end:
 ```php
 // app/AgentWorkflows/AcquisitionReview.php
 return $workflow
-    ->step(FetchFilings::class)                                  // any invokable class is a step
-    ->step(SummarizeFilingsAgent::class)                         // an agent: one checkpointed agentic turn
+    // any invokable class is a step
+    ->step(FetchFilings::class)
 
-    ->parallel([                                                 // fan out the analysis, merge when all finish
+    // an agent: one checkpointed agentic turn
+    ->step(SummarizeFilingsAgent::class)
+
+    // fan out the analysis, merge when all finish
+    ->parallel([
         FinancialAnalysisAgent::class,
         LegalAnalysisAgent::class,
     ])
 
-    ->debate(                                                    // argue the thesis; a judge rules each round
+    // argue the thesis; a judge rules each round
+    ->debate(
         ['bull' => BullCaseAgent::class, 'bear' => BearCaseAgent::class],
         judge: VerdictAgent::class,
         as: 'thesis')
 
+    // no consensus? dig deeper, else skip ahead
     ->when(fn (WorkflowState $state) => ! $state->get('steps.thesis.satisfied'),
-        then: DeepDiveAgent::class)                              // no consensus? dig deeper, else skip ahead
+        then: DeepDiveAgent::class)
 
-    ->evaluate(DraftMemoAgent::class, as: 'memo',                // revise the memo until it scores
+    // revise the memo until it is ready
+    ->evaluate(DraftMemoAgent::class, as: 'memo',
         until: fn (WorkflowState $state) => $state->get('steps.memo.structured.score', 0) >= 8)
 
-    ->awaitHuman(reason: 'Partner sign-off required')            // park for a person — hours or weeks
+    // park for a person — hours or weeks
+    ->awaitHuman(reason: 'Partner sign-off required')
 
-    ->awaitEvent('funds.cleared')                                // park until the wire lands
+    // park until the wire lands
+    ->awaitEvent('funds.cleared')
 
-    ->step(RecordInvestment::class);                             // close it out
+    // close it out
+    ->step(RecordInvestment::class);
 ```
 
 Each one is documented in [Defining Workflows](docs/defining-workflows.md), [Human in the Loop](docs/human-in-the-loop.md), and [Agent Debates](docs/agent-debate.md).
