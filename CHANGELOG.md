@@ -2,7 +2,9 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
-## Unreleased
+## v0.12.0 — 2026-07-31
+
+Feature release: class-based workflows start themselves. No schema changes, no migration.
 
 **Added:**
 
