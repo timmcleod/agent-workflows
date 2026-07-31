@@ -51,6 +51,41 @@ $run->retry();                                             // a step failed? re-
 
 The **[Quick Start](docs/quick-start.md)** builds a workflow like this end to end.
 
+## The step types
+
+Every step type in its simplest form — one acquisition review, end to end:
+
+```php
+// app/AgentWorkflows/AcquisitionReview.php
+return $workflow
+    ->step(FetchFilings::class)                                  // any invokable class is a step
+    ->step(SummarizeFilingsAgent::class)                         // an agent: one checkpointed agentic turn
+
+    ->parallel([                                                 // fan out the analysis, merge when all finish
+        FinancialAnalysisAgent::class,
+        LegalAnalysisAgent::class,
+    ])
+
+    ->debate(                                                    // argue the thesis; a judge rules each round
+        ['bull' => BullCaseAgent::class, 'bear' => BearCaseAgent::class],
+        judge: VerdictAgent::class,
+        as: 'thesis')
+
+    ->when(fn (WorkflowState $state) => ! $state->get('steps.thesis.satisfied'),
+        then: DeepDiveAgent::class)                              // no consensus? dig deeper, else skip ahead
+
+    ->evaluate(DraftMemoAgent::class, as: 'memo',                // revise the memo until it scores
+        until: fn (WorkflowState $state) => $state->get('steps.memo.structured.score', 0) >= 8)
+
+    ->awaitHuman(reason: 'Partner sign-off required')            // park for a person — hours or weeks
+
+    ->awaitEvent('funds.cleared')                                // park until the wire lands
+
+    ->step(RecordInvestment::class);                             // close it out
+```
+
+Each one is documented in [Defining Workflows](docs/defining-workflows.md), [Human in the Loop](docs/human-in-the-loop.md), and [Agent Debates](docs/agent-debate.md).
+
 ## The dashboard
 
 The companion [`timmcleod/agent-workflows-ui`](https://github.com/timmcleod/agent-workflows-ui) package renders each run as a live flowchart — completed steps green, the taken branch highlighted, failed attempts and retries in the audit trail, approval forms generated from each gate's schema:
