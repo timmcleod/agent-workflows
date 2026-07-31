@@ -25,6 +25,20 @@ Associate a run with a user (or any model) via the polymorphic participant:
 AgentWorkflow::start('contract-review', input: [...], participant: $user);
 ```
 
+`start()` accepts a registered string name or a `Workflow` class name (type-safe, refactor-friendly); both reach the same definition. Registration itself happens at boot from the config `workflows` array — `AgentWorkflow::register()` exists for runtime registration (tests, packages), and `AgentWorkflow::fake()` swaps in the recording manager for [tests](testing.md).
+
+## Acting on a run
+
+Everything on the run model shapes *what happens next for that one execution*:
+
+| Method | What it does | When to use it |
+| --- | --- | --- |
+| `$run->retry()` | Re-dispatches a **failed** run from its failed step. Earlier steps keep their committed results. | After you've fixed whatever failed (provider outage, bad config, a bug). Throws unless the run's status is `failed`. |
+| `$run->resume($response, by:)` | Wakes a run parked by `awaitHuman()` (validates against the schema, merges into state) or by a tool-approval pause (replays the decisions map into the agent). | When the human answers. `by:` records who, on the interrupt. |
+| `$run->deliverEvent($event, $payload)` | Wakes a run parked by `awaitEvent()`; the payload merges into state. | From the webhook/listener where the awaited thing happens. |
+| `$run->cancel()` | Ends the run as `cancelled`, resolving any open interrupt. A step already executing finishes but cannot advance a cancelled run — its result is discarded at the boundary. | Abandoning a run from any non-terminal state (including `failed`). |
+| `$run->workflowState()` | The current checkpoint as a `WorkflowState` bag. | Reading run data in UIs or listeners (`$run->state` gives the raw array). |
+
 ## Events
 
 Listen for lifecycle events anywhere you'd listen for any Laravel event:

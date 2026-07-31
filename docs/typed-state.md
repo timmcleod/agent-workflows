@@ -113,7 +113,7 @@ A state class is a **lens, not a schema**. Storage, checkpointing, `input_state_
 - **It's fully optional.** `stateClass()` defaults to `WorkflowState::class`; workflows that don't override it behave exactly as before. Adopting or dropping a state class later is never a data migration.
 - **The base API stays available.** `get()`/`set()`/`has()`/`merge()` work on the subclass — accessors are the paved path, not a wall. Ad-hoc keys don't need ceremony.
 - **Keep it stateless.** Accessors should read from the bag (`$this->get(...)`), not hold their own properties — anything outside the bag is not checkpointed and will not survive a queue hop.
-- **It never strands runs.** The state class is deliberately excluded from the definition hash, so adding/renaming one won't trip strict [definition-drift protection](../README.md#deploys-and-definition-drift) for in-flight runs. And when a run's workflow isn't registered in the current process, hydration falls back to the base `WorkflowState` rather than failing.
+- **It never strands runs.** The state class is deliberately excluded from the definition hash, so adding/renaming one won't trip strict [definition-drift protection](quick-start.md#deploys-and-definition-drift) for in-flight runs. And when a run's workflow isn't registered in the current process, hydration falls back to the base `WorkflowState` rather than failing.
 
 ## Why not typed properties?
 
