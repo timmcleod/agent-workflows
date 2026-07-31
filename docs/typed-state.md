@@ -1,6 +1,14 @@
-# Typed workflow state
+# Workflow state
 
-The `WorkflowState` bag is deliberately schemaless: it's a JSON checkpoint that any step can read and write, and unknown keys survive every round-trip — that's what lets a checkpoint written by one version of your app rehydrate under the next. The cost is stringly-typed access: paths like `steps.RiskAnalysisAgent.structured.riskScore` sprinkled through steps, prompts, and conditions, with no completion and no error when you typo one.
+The `WorkflowState` bag is the package's backbone: it is checkpointed to the database after **every** step, and it's how steps that run minutes or days apart share data. `get()`/`set()`/`has()`/`forget()` accept dot notation; `merge()` and `all()` work on the whole bag. Everything stored must be JSON-serializable.
+
+Three conventions worth knowing:
+
+- Your `start()` input is the initial state.
+- Agent output lands under `steps.{step id}` (`steps.DraftReplyAgent.text`, and `.structured` for schema output).
+- `resume()` and `deliverEvent()` payloads merge into the top level.
+
+The bag is deliberately schemaless: it's a JSON checkpoint that any step can read and write, and unknown keys survive every round-trip — that's what lets a checkpoint written by one version of your app rehydrate under the next. The cost is stringly-typed access: paths like `steps.RiskAnalysisAgent.structured.riskScore` sprinkled through steps, prompts, and conditions, with no completion and no error when you typo one.
 
 This page covers the two tools that fix the ergonomics without giving up the schemaless storage: `output()` for addressing step results, and per-workflow **state classes** for typed, semantic access.
 

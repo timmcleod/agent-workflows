@@ -72,7 +72,20 @@ return $workflow
     ->step(SynthesisAgent::class);
 ```
 
-Branches run as a **`Bus::batch`**: distributed across queue workers, SQS-safe. Each branch starts from the same state snapshot; results merge when all branches finish. Conflicting writes fail the run rather than silently losing data — or pass a `merge:` closure to resolve them. `mode: 'sync'` gives you the official in-request behavior behind the same API when that's genuinely what you want.
+Branches run as a **`Bus::batch`**: distributed across queue workers, SQS-safe. Each branch starts from the same state snapshot; results merge when all branches finish. `mode: 'sync'` gives you the official in-request behavior behind the same API when that's genuinely what you want.
+
+Two things to know about the default merge: agent checkpoints (`steps.*`) merge per step id, so agent branches never conflict on the engine's own bookkeeping; and the merge is a **union of branch writes** — a key a branch `forget()`s is not deleted from the merged state, and two branches writing different values to the same key fail the run rather than silently losing data. For deletions, or your own conflict policy, provide a merge closure:
+
+```php
+->parallel(
+    [BullCaseAgent::class, BearCaseAgent::class],
+    merge: fn (array $branches, array $input) => array_merge($input, [
+        'thesis' => $branches['BullCaseAgent']['thesis'].' vs '.$branches['BearCaseAgent']['thesis'],
+    ]),
+)
+```
+
+If any branch fails, the run fails at the parallel step and `retry()` re-runs the whole fan-out.
 
 ## 4. Orchestrator-workers
 
@@ -99,6 +112,26 @@ return $workflow
 ```
 
 Every iteration is its own checkpointed job. A crash at iteration 3 resumes at iteration 3. After the loop, `steps.{id}.iteration` and `steps.{id}.satisfied` record how it ended.
+
+## A pattern of this package's own: debate — `debate()`
+
+Two or more agents argue a topic in rounds while a judge rules on the transcript after each round; the loop stops on consensus or at the round cap. Sugar over `evaluate()` — every round is a checkpoint and an audit row, and a crash mid-debate resumes at the last committed round:
+
+```php
+// In AcquisitionReview::build():
+return $workflow
+    ->step(FetchFilingsStep::class)
+    ->debate(
+        ['bull' => BullCaseAgent::class, 'bear' => BearCaseAgent::class],
+        judge: VerdictAgent::class,
+        as: 'thesis',
+        rounds: 4,
+        topic: fn (WorkflowState $s) => 'Should we acquire X? Filings: '.$s->get('filings'),
+    )
+    ->step(WriteMemoStep::class);
+```
+
+The judge needs structured output with a `consensus` boolean (or pass your own `until:`); downstream steps read the verdict via `$state->output('thesis')?->get('judge.consensus')` and the argument via `Transcript::in($state, 'thesis')`. Costs grow quadratically with `rounds` — the full story (custom protocol prompts, `transcriptWindow:`, retry semantics, operational sizing) lives in **[Agent debate](agent-debate.md)**.
 
 ## The sixth pattern the blog can't do: stop and wait
 
@@ -132,6 +165,7 @@ The same mechanism absorbs the SDK's tool-approval flow: when an agent step paus
 | Parallelization | `Concurrency::run()` | `Bus::batch` fan-out; queue-distributed; merge with conflicts |
 | Orchestrator-workers | Sub-agents as tools | Unchanged — wrapped in a checkpointed, auditable step |
 | Evaluator-optimizer | `while` loop | Every iteration checkpointed, capped, and audited |
+| *(new)* Debate | — | Judge-ruled rounds, one checkpoint each — [`debate()`](agent-debate.md) |
 | *(new)* Interrupts | — | `awaitHuman` / `awaitEvent` / tool-approval bridge |
 
 Every example on this page has a corresponding passing test in [`tests/Feature`](../tests/Feature).
