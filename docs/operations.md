@@ -47,4 +47,4 @@ The package's configuration lives in `config/agent-workflows.php`:
 | `tables.*` | Rename the package's tables (runs, steps, interrupts). |
 | `audit.step_output` | `full` (default) or `minimal` — what step audit rows snapshot as output. |
 | `sweep.stale_after` / `sweep.action` | Staleness threshold (seconds) and recovery action for the sweeper. |
-| `definition_drift` | `strict` (refuse to resume a changed definition) or `loose` (resume best-effort by step name) — see [definition drift](quick-start.md#definition-drift). |
+| `definition_drift` | `strict` (refuse to resume a changed definition) or `loose` (resume best-effort by step name) — see [definition drift](defining-workflows.md#definition-drift). |

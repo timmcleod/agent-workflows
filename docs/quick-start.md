@@ -10,7 +10,6 @@
 - [Resuming Runs](#resuming-runs)
 - [Handling Failures](#handling-failures)
 - [Workflow Classes](#workflow-classes)
-- [Definition Drift](#definition-drift)
 
 ## Introduction
 
@@ -204,7 +203,4 @@ Every workflow is a class extending `Workflow` with a `build` method, generated 
 - A workflow registers under the kebab-cased class name (`ContractReview` → `contract-review`). You may override the `name` method to choose your own. Runs store this name, so you should treat it as stable once runs exist.
 - You may start a run using the workflow's static `start` method as shown above, or via the facade — `AgentWorkflow::start` accepts the class name or the registered string name; all three reach the same definition.
 - You may override the `stateClass` method to hydrate a [typed state class](workflow-state.md) for every step of the workflow.
-
-## Definition Drift
-
-Every run stores a hash of its definition at start time. If a deploy changes the workflow while a run is in flight, resuming it is refused by default (`definition_drift: strict`) so a run never executes against steps it never agreed to. Set the option to `loose` to resume best-effort by step name.
+- Every run stores a hash of its definition at start time, so a deploy that changes a workflow refuses to resume its in-flight runs by default — see [definition drift](defining-workflows.md#definition-drift).

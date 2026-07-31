@@ -15,6 +15,7 @@ Picture a real feature: reviewing a contract. Extract the clauses, score the ris
 
 Already know the multi-agent space? This package deliberately adopts the vocabulary of the five patterns from [Laravel's official multi-agent guidance](https://laravel.com/blog/building-multi-agent-workflows-with-the-laravel-ai-sdk) and makes each one crash-safe: see [The five patterns, made durable](docs/five-patterns-made-durable.md).
 
+> [!NOTE]
 > **Status: pre-release.** The core engine (sequential, conditional, parallel, evaluator, and debate steps; checkpoint/retry; interrupts; events; testing fakes) is implemented and tested. APIs may change before 1.0.
 
 ## What it looks like
@@ -28,13 +29,11 @@ class ContractReview extends Workflow
         return $workflow
             ->step(ExtractClausesAgent::class, prompt: $this->extractPrompt(...))
             ->step(RiskAnalysisAgent::class, prompt: $this->riskPrompt(...))
-            ->when(fn (WorkflowState $s) => $s->output(RiskAnalysisAgent::class)?->structured('riskScore') >= 7,
+            ->when(fn (WorkflowState $state) => $state->output(RiskAnalysisAgent::class)?->structured('riskScore') >= 7,
                 then: EscalationAgent::class,
                 thenPrompt: $this->escalationPrompt(...))
             ->awaitHuman(reason: 'Final sign-off required',
-                schema: ['approved' => 'required|boolean', 'notes' => 'nullable|string'],
-                timeout: CarbonInterval::days(3),
-                timeoutResponse: ['approved' => false, 'notes' => 'Auto-rejected: sign-off timed out.'])
+                schema: ['approved' => 'required|boolean', 'notes' => 'nullable|string'])
             ->step(GenerateSummaryAgent::class, prompt: $this->summaryPrompt(...));
     }
 }
@@ -50,7 +49,7 @@ $run->retry();                                             // a step failed? re-
                                                            // earlier steps keep their results and their token bill
 ```
 
-The **[quick start](docs/quick-start.md)** builds a workflow like this end to end.
+The **[Quick Start](docs/quick-start.md)** builds a workflow like this end to end.
 
 ## The dashboard
 
@@ -86,18 +85,18 @@ Want to see it run first? The **[demo app](https://github.com/timmcleod/agent-wo
 | `debate()` | Agents argue in rounds; a judge rules on the transcript after each. | [Agent Debates](docs/agent-debate.md) |
 | `awaitHuman()` | Park for sign-off — hours or weeks — with validation schemas and SLA timeouts. | [Human in the Loop](docs/human-in-the-loop.md) |
 | `awaitEvent()` | Park until another system delivers a named event (webhooks, payments). | [Human in the Loop](docs/human-in-the-loop.md) |
-| Retry from checkpoint | `$run->retry()` re-runs only the failed step; earlier tokens stay paid. | [Quick Start](docs/quick-start.md#handling-failures) |
+| Retry from checkpoint | `$run->retry()` re-runs only the failed step; earlier tokens stay paid. | [Runs & Observability](docs/runs-and-observability.md#managing-runs) |
 | Tool-approval bridge | SDK tool approvals park the run; `resume()` replays the decisions. | [Human in the Loop](docs/human-in-the-loop.md#tool-approvals) |
 | Agent steps | Prompts live on the step, not the agent; a step is one full agentic turn. | [Agent Steps](docs/agent-steps.md) |
 | Workflow state | A checkpointed bag with `output()` addressing and typed per-workflow classes. | [Workflow State](docs/workflow-state.md) |
 | Audit trail & events | Every attempt an Eloquent row (timings, tokens, errors); lifecycle events for everything. | [Runs & Observability](docs/runs-and-observability.md) |
 | Testing fakes | `AgentWorkflow::fake()` assertions over really-executing workflows. | [Testing](docs/testing.md) |
-| Definition drift | Deploy-changed workflows refuse to resume in-flight runs by default. | [Quick Start](docs/quick-start.md#definition-drift) |
+| Definition drift | Deploy-changed workflows refuse to resume in-flight runs by default. | [Defining Workflows](docs/defining-workflows.md#definition-drift) |
 | Operations | A sweeper for dead workers, queue-sizing rules, at-least-once semantics. | [Operations](docs/operations.md) |
 
 ## Documentation
 
-Full documentation lives in the **[documentation index](docs/README.md)** — from the [quick start](docs/quick-start.md) through defining workflows, state, human gates, debates, testing, and operations.
+Full documentation lives in the **[documentation index](docs/README.md)** — from the [Quick Start](docs/quick-start.md) through defining workflows, state, human gates, debates, testing, and operations.
 
 ## What this package is not
 

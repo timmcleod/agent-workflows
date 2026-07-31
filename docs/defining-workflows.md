@@ -11,6 +11,7 @@
   - [Merging Branch State](#merging-branch-state)
 - [Loops](#loops)
 - [Gates & Debates](#gates--debates)
+- [Definition Drift](#definition-drift)
 
 ## Introduction
 
@@ -112,7 +113,7 @@ Every step gets an id, used in state paths (`steps.{id}`), audit rows, and `outp
 An explicit alias that collides with an existing id throws — silently renaming it would point audit rows, state paths, and `output()` lookups at the wrong step.
 
 > [!NOTE]
-> Structural steps without an `as` get positional default ids (`when:2`, `parallel:3`, `await-human:4`). Inserting an earlier step renumbers them — which moves state paths and changes the [definition hash](quick-start.md#definition-drift). For long-lived workflows, prefer explicit aliases on structural steps.
+> Structural steps without an `as` get positional default ids (`when:2`, `parallel:3`, `await-human:4`). Inserting an earlier step renumbers them — which moves state paths and changes the [definition hash](#definition-drift). For long-lived workflows, prefer explicit aliases on structural steps.
 
 ## Conditions
 
@@ -196,3 +197,9 @@ Two families of step types have pages of their own:
 
 - **`awaitHuman` and `awaitEvent`** park the run for a person or another system — validation schemas, SLA timeouts, and payload security are covered in [Human in the Loop](human-in-the-loop.md).
 - **`debate`** runs judge-ruled, multi-agent argument rounds as a durable loop — see [Agent Debates](agent-debate.md).
+
+## Definition Drift
+
+Every run stores a hash of its definition at start time. If a deploy changes the workflow while a run is in flight, resuming it is refused by default (`definition_drift: strict`) so a run never executes against steps it never agreed to. Set the option to `loose` to resume best-effort by step name.
+
+Closure bodies — conditions, predicates, merge strategies, and prompt closures — are not hashed; only the step structure is.
