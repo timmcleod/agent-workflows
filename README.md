@@ -41,7 +41,7 @@ class ContractReview extends Workflow
 ```
 
 ```php
-$run = AgentWorkflow::start(ContractReview::class, input: ['contract' => $text]);
+$run = ContractReview::start(['contract' => $text]);
 // Each step runs as a queued job and is checkpointed as it completes. The run
 // parks at the sign-off gate — through deploys, restarts, and weekends.
 

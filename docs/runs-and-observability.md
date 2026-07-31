@@ -22,10 +22,10 @@ $run->steps;           // audit log: every attempt of every step, with
 Associate a run with a user (or any model) via the polymorphic participant:
 
 ```php
-AgentWorkflow::start('contract-review', input: [...], participant: $user);
+ContractReview::start(input: [...], participant: $user);
 ```
 
-`start()` accepts a registered string name or a `Workflow` class name (type-safe, refactor-friendly); both reach the same definition. Registration itself happens at boot from the config `workflows` array — `AgentWorkflow::register()` exists for runtime registration (tests, packages), and `AgentWorkflow::fake()` swaps in the recording manager for [tests](testing.md).
+The static `start()` on the workflow class delegates to the facade's `AgentWorkflow::start()`, which also accepts a registered string name; both reach the same definition. Registration itself happens at boot from the config `workflows` array — `AgentWorkflow::register()` exists for runtime registration (tests, packages), and `AgentWorkflow::fake()` swaps in the recording manager for [tests](testing.md).
 
 ## Acting on a run
 

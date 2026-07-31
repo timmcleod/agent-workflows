@@ -2,6 +2,12 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
+## Unreleased
+
+**Added:**
+
+- Static `Workflow::start()` — class-based workflows can now start themselves: `ContractReview::start(['contract' => $text], participant: $user)` is equivalent to `AgentWorkflow::start(ContractReview::class, ...)`. Resolves the manager through the container, so `AgentWorkflow::fake()` records these runs too. The facade remains the way to start string-named workflows.
+
 ## v0.11.0 — 2026-07-30
 
 Feature release: durable multi-agent debate. No schema changes, no migration.

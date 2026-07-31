@@ -3,6 +3,7 @@
 namespace TimMcLeod\AgentWorkflows;
 
 use Illuminate\Support\Str;
+use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
 
 /**
  * A workflow definition. Generate with `php artisan make:agent-workflow`
@@ -43,5 +44,15 @@ abstract class Workflow
     public function definition(): WorkflowDefinition
     {
         return $this->build(new WorkflowDefinition($this->name(), $this->stateClass()));
+    }
+
+    /**
+     * Start a new run of this workflow.
+     *
+     * @param  array<string, mixed>  $input
+     */
+    public static function start(array $input = [], ?object $participant = null): WorkflowRun
+    {
+        return app(WorkflowManager::class)->start(static::class, $input, $participant);
     }
 }

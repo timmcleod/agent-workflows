@@ -72,7 +72,7 @@ Delivering the wrong event name throws; the payload is merged into state. Like `
 `laravel/ai` tools can [require approval](https://laravel.com/docs/13.x/ai-sdk) before they run. When an agent step pauses on tool approvals, this package converts the pause into a workflow interrupt: the run parks as `awaiting_human` with the pending approvals (tool, arguments, reason) persisted on the interrupt. Resume with a decisions map and the package replays it into the paused conversation:
 
 ```php
-$run = AgentWorkflow::start('deploy', input: ['prompt' => 'Deploy the app']);
+$run = Deploy::start(['prompt' => 'Deploy the app']);
 
 $run->status;                          // awaiting_human
 $run->interrupts->last()->context;     // ['approvals' => [['id' => 'toolu_1', 'tool' => 'deploy_tool', ...]]]

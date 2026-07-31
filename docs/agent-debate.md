@@ -143,7 +143,7 @@ VerdictAgent::fake([
     ['consensus' => true,  'summary' => 'Agreed: proceed.'],
 ]);
 
-$run = AgentWorkflow::start('acquisition-review', ['filings' => '...']);
+$run = AcquisitionReview::start(['filings' => '...']);
 
 expect($run->state['steps']['thesis']['satisfied'])->toBeTrue();
 

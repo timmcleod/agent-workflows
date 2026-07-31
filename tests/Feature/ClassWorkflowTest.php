@@ -20,6 +20,24 @@ it('starts a class-based workflow by its class name', function () {
         ->and($run->state['finalized'])->toBeTrue();
 });
 
+it('starts a class-based workflow via its own static start method', function () {
+    $run = ContractReviewWorkflow::start(['contract' => 'C1']);
+
+    expect($run->name)->toBe('contract-review-workflow')
+        ->and($run->status)->toBe(RunStatus::Completed)
+        ->and($run->state['contract'])->toBe('C1')
+        ->and($run->state['finalized'])->toBeTrue();
+});
+
+it('records static-start runs on the workflow fake', function () {
+    $fake = AgentWorkflow::fake();
+
+    ContractReviewWorkflow::start(['contract' => 'C2']);
+
+    $fake->assertStarted('contract-review-workflow', fn ($run) => $run->state['contract'] === 'C2');
+    $fake->assertCompleted('contract-review-workflow');
+});
+
 it('generates a workflow class with the artisan command', function () {
     $path = app_path('AgentWorkflows/ContractReview.php');
 

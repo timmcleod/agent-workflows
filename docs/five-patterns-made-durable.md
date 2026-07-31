@@ -22,7 +22,7 @@ return $workflow
     ->step(PolishAgent::class,
         prompt: fn ($s) => 'Polish this draft: '.$s->get('steps.DraftAgent.text'));
 
-$run = AgentWorkflow::start('content-pipeline', input: ['brief' => $brief]);
+$run = ContentPipeline::start(['brief' => $brief]);
 ```
 
 Each step is a queued job, and state is committed after every step. When `PolishAgent` fails:
