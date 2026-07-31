@@ -76,7 +76,7 @@ Hardening release from a full-package review: parallel × agents, parallel × cr
 
 ## v0.8.0 — 2026-07-28
 
-**Typed workflow state.** Additive, no breaking changes. See [docs/typed-state.md](docs/typed-state.md).
+**Typed workflow state.** Additive, no breaking changes. See [docs/typed-state.md](docs/workflow-state.md).
 
 - A workflow may override `stateClass()` with a `WorkflowState` subclass; the engine hydrates it everywhere user code receives state — steps, prompt closures, conditions, predicates, and continuations after `resume()`/`deliverEvent()`/`retry()`. Purely a lens: storage, checkpoints, and merge semantics are unchanged, and the state class is excluded from the definition hash so adopting one never strands in-flight runs.
 - `WorkflowState::output()` addresses a step's checkpointed output by class or step id — `output(RiskAnalysisAgent::class)?->structured('riskScore')` instead of `get('steps.RiskAnalysisAgent.structured.riskScore')` — returning `null` before the step has checkpointed.

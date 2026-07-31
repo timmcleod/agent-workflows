@@ -79,33 +79,25 @@ Want to see it run first? The **[demo app](https://github.com/timmcleod/agent-wo
 
 | Feature | In one line | Details |
 | --- | --- | --- |
-| `step()` | Chain agents and plain PHP classes; every arrow in the chain is a checkpoint. | [Patterns](docs/five-patterns-made-durable.md) |
-| `when()` | Branch on checkpointed state; the decision is recorded for audit. | [Patterns](docs/five-patterns-made-durable.md) |
-| `parallel()` | Durable fan-out as a queued `Bus::batch`, merged when all branches finish. | [Patterns](docs/five-patterns-made-durable.md) |
-| `evaluate()` | Loop a step until a predicate passes, checkpointing every iteration, capped. | [Patterns](docs/five-patterns-made-durable.md) |
-| `debate()` | Agents argue in rounds; a judge rules on the transcript after each. | [Agent debate](docs/agent-debate.md) |
-| `awaitHuman()` | Park for sign-off — hours or weeks — with validation schemas and SLA timeouts. | [Human-in-the-loop](docs/human-in-the-loop.md) |
-| `awaitEvent()` | Park until another system delivers a named event (webhooks, payments). | [Human-in-the-loop](docs/human-in-the-loop.md) |
-| Retry from checkpoint | `$run->retry()` re-runs only the failed step; earlier tokens stay paid. | [Quick start](docs/quick-start.md#6-when-something-breaks) |
-| Tool-approval bridge | SDK tool approvals park the run; `resume()` replays the decisions. | [Human-in-the-loop](docs/human-in-the-loop.md#sdk-tool-approvals-become-workflow-interrupts) |
-| Agent steps | Prompts live on the step, not the agent; a step is one full agentic turn. | [Agent steps](docs/agent-steps.md) |
-| Workflow state | A checkpointed bag with `output()` addressing and typed per-workflow classes. | [Workflow state](docs/typed-state.md) |
-| Audit trail & events | Every attempt an Eloquent row (timings, tokens, errors); lifecycle events for everything. | [Observability](docs/runs-and-observability.md) |
+| `step()` | Chain agents and plain PHP classes; every arrow in the chain is a checkpoint. | [Defining Workflows](docs/defining-workflows.md#steps) |
+| `when()` | Branch on checkpointed state; the decision is recorded for audit. | [Defining Workflows](docs/defining-workflows.md#conditions) |
+| `parallel()` | Durable fan-out as a queued `Bus::batch`, merged when all branches finish. | [Defining Workflows](docs/defining-workflows.md#parallel-steps) |
+| `evaluate()` | Loop a step until a predicate passes, checkpointing every iteration, capped. | [Defining Workflows](docs/defining-workflows.md#loops) |
+| `debate()` | Agents argue in rounds; a judge rules on the transcript after each. | [Agent Debates](docs/agent-debate.md) |
+| `awaitHuman()` | Park for sign-off — hours or weeks — with validation schemas and SLA timeouts. | [Human in the Loop](docs/human-in-the-loop.md) |
+| `awaitEvent()` | Park until another system delivers a named event (webhooks, payments). | [Human in the Loop](docs/human-in-the-loop.md) |
+| Retry from checkpoint | `$run->retry()` re-runs only the failed step; earlier tokens stay paid. | [Quick Start](docs/quick-start.md#handling-failures) |
+| Tool-approval bridge | SDK tool approvals park the run; `resume()` replays the decisions. | [Human in the Loop](docs/human-in-the-loop.md#tool-approvals) |
+| Agent steps | Prompts live on the step, not the agent; a step is one full agentic turn. | [Agent Steps](docs/agent-steps.md) |
+| Workflow state | A checkpointed bag with `output()` addressing and typed per-workflow classes. | [Workflow State](docs/workflow-state.md) |
+| Audit trail & events | Every attempt an Eloquent row (timings, tokens, errors); lifecycle events for everything. | [Runs & Observability](docs/runs-and-observability.md) |
 | Testing fakes | `AgentWorkflow::fake()` assertions over really-executing workflows. | [Testing](docs/testing.md) |
-| Definition drift | Deploy-changed workflows refuse to resume in-flight runs by default. | [Quick start](docs/quick-start.md#deploys-and-definition-drift) |
+| Definition drift | Deploy-changed workflows refuse to resume in-flight runs by default. | [Quick Start](docs/quick-start.md#definition-drift) |
 | Operations | A sweeper for dead workers, queue-sizing rules, at-least-once semantics. | [Operations](docs/operations.md) |
 
 ## Documentation
 
-- **[Quick start](docs/quick-start.md)** — your first workflow end to end: agent, plain-PHP step, workflow class, start, resume, retry.
-- **[The five patterns, made durable](docs/five-patterns-made-durable.md)** — Laravel's official multi-agent patterns rewritten with checkpoints, retry, and resume.
-- **[Agent debate](docs/agent-debate.md)** — `debate()`: judge-ruled rounds, costs, retry semantics, and the transcript.
-- **[Human-in-the-loop](docs/human-in-the-loop.md)** — `awaitHuman()`, `awaitEvent()`, timeouts, the tool-approval bridge, and payload security.
-- **[Agent steps](docs/agent-steps.md)** — prompts defined at the step, tool loops inside one step, checkpointed output.
-- **[Workflow state](docs/typed-state.md)** — the state bag, `output()`, and typed state classes.
-- **[Runs, events, and observability](docs/runs-and-observability.md)** — the Eloquent models, lifecycle events, and the dashboard.
-- **[Testing](docs/testing.md)** — `AgentWorkflow::fake()` and faked agents.
-- **[Operations](docs/operations.md)** — queue sizing, the sweeper, execution semantics, and every config key.
+Full documentation lives in the **[documentation index](docs/README.md)** — from the [quick start](docs/quick-start.md) through defining workflows, state, human gates, debates, testing, and operations.
 
 ## What this package is not
 

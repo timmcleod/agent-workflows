@@ -4,7 +4,7 @@ Laravel's official guidance — [Building Multi-Agent Workflows with the Laravel
 
 What the official examples share is that they're **in-process, synchronous, and ephemeral**. Every one of them dies with the request: a failure at step 4 reruns steps 1–3, a deploy kills in-flight work, and nothing can pause for a human.
 
-This page rewrites each official example with checkpoints, retry, and resume. Same patterns, same agents — durable.
+This page rewrites each official example with checkpoints, retry, and resume. Same patterns, same agents — durable. (This is an article, not a reference: the methods it uses are documented in [Defining Workflows](defining-workflows.md).)
 
 ## 1. Prompt chaining
 
@@ -131,7 +131,7 @@ return $workflow
     ->step(WriteMemoStep::class);
 ```
 
-The judge needs structured output with a `consensus` boolean (or pass your own `until:`); downstream steps read the verdict via `$state->output('thesis')?->get('judge.consensus')` and the argument via `Transcript::in($state, 'thesis')`. Costs grow quadratically with `rounds` — the full story (custom protocol prompts, `transcriptWindow:`, retry semantics, operational sizing) lives in **[Agent debate](agent-debate.md)**.
+The judge needs structured output with a `consensus` boolean (or pass your own `until:`); downstream steps read the verdict via `$state->output('thesis')?->get('judge.consensus')` and the argument via `Transcript::in($state, 'thesis')`. Costs grow quadratically with `rounds` — the full story (custom protocol prompts, `transcriptWindow:`, retry semantics, operational sizing) lives in **[Agent Debates](agent-debate.md)**.
 
 ## The sixth pattern the blog can't do: stop and wait
 
