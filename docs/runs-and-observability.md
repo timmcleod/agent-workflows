@@ -73,7 +73,7 @@ The full set lives under the `TimMcLeod\AgentWorkflows\Events` namespace:
 
 ## Dashboard
 
-The companion [`timmcleod/agent-workflows-ui`](https://github.com/timmcleod/agent-workflows-ui) package renders each run as a live flowchart: completed steps green, the taken branch highlighted, failed attempts and retries in the audit trail, approval forms generated from `awaitHuman` schemas, and round-by-round progress on `debate` steps.
+The models and events above are the package's complete interface — no UI is required. If you want one, the optional companion [`timmcleod/agent-workflows-ui`](https://github.com/timmcleod/agent-workflows-ui) package renders each run as a live flowchart: completed steps green, the taken branch highlighted, failed attempts and retries in the audit trail, approval forms generated from `awaitHuman` schemas, and round-by-round progress on `debate` steps.
 
 ```bash
 composer require timmcleod/agent-workflows-ui

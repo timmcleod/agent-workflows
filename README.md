@@ -96,9 +96,9 @@ return $workflow
 
 Each one is documented in [Defining Workflows](docs/defining-workflows.md), [Human in the Loop](docs/human-in-the-loop.md), and [Agent Debates](docs/agent-debate.md).
 
-## The dashboard
+## The dashboard (optional)
 
-The companion [`timmcleod/agent-workflows-ui`](https://github.com/timmcleod/agent-workflows-ui) package renders each run as a live flowchart — completed steps green, the taken branch highlighted, failed attempts and retries in the audit trail, approval forms generated from each gate's schema:
+The core package has no UI and needs none — runs, steps, and interrupts are Eloquent models, and lifecycle events cover the rest, so your own controllers, dashboards, and listeners are the interface. If you want a ready-made UI on top of that, the **optional** companion [`timmcleod/agent-workflows-ui`](https://github.com/timmcleod/agent-workflows-ui) package renders each run as a live flowchart — completed steps green, the taken branch highlighted, failed attempts and retries in the audit trail, approval forms generated from each gate's schema:
 
 ![The dashboard: a completed run rendered as a flowchart, the taken branch highlighted and the untaken branch dimmed, with the step-attempt audit trail alongside](https://raw.githubusercontent.com/timmcleod/agent-workflows-ui/main/art/dashboard.png)
 
