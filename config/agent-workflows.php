@@ -94,6 +94,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Parallel Steps on the Sync Queue
+    |--------------------------------------------------------------------------
+    |
+    | When workflow jobs run on the sync queue driver (typically a test
+    | suite), parallel branches execute with this Concurrency driver instead
+    | of the application's default. The in-process "sync" driver keeps
+    | branches inside the test database transaction and Agent::fake() state;
+    | set "process" to opt back into process isolation. Real queue
+    | connections are unaffected.
+    |
+    */
+
+    'parallel' => [
+        'sync_driver' => env('AGENT_WORKFLOWS_PARALLEL_SYNC_DRIVER', 'sync'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Definition Drift
     |--------------------------------------------------------------------------
     |

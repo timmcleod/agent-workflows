@@ -22,7 +22,7 @@ it('reviews contracts', function () {
 });
 ```
 
-With the default `sync` queue in tests, an entire workflow executes inside the `start` call — no worker is needed.
+With the default `sync` queue in tests, an entire workflow executes inside the `start` call — no worker is needed. This includes `parallel` steps: on the sync queue, branches run in-process with the `sync` concurrency driver, so they share the test database and `Agent::fake` state without any concurrency configuration on your part (see the `parallel.sync_driver` config key to opt back into process isolation).
 
 ## Available Assertions
 

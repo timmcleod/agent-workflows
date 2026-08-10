@@ -355,7 +355,19 @@ class WorkflowStepJob implements ShouldQueue
     ): void {
         [$runId, $stepId] = [$run->id, $step->id];
 
-        $results = $this->attempt($stepRow, fn () => Concurrency::run(array_map(
+        // On the sync queue (every consumer's test suite), Concurrency's
+        // default process driver would execute branches in child processes
+        // that share neither the test database nor Agent::fake(). Run
+        // branches in-process there; parallel.sync_driver opts back into
+        // another driver. A real queue with mode "sync" keeps the
+        // application's configured Concurrency driver.
+        $connection = config('agent-workflows.queue.connection') ?? config('queue.default');
+
+        $driver = config("queue.connections.{$connection}.driver") === 'sync'
+            ? config('agent-workflows.parallel.sync_driver', 'sync')
+            : null;
+
+        $results = $this->attempt($stepRow, fn () => Concurrency::driver($driver)->run(array_map(
             fn (StepDefinition $branch) => fn (): array => app(BranchRunner::class)->run($runId, $stepId, $branch->id),
             $step->branches,
         )));

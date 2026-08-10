@@ -93,3 +93,21 @@ it('does not flag branches that leave another step checkpoint untouched', functi
         ->and($merged->get('steps.BranchA.text'))->toBe('a')
         ->and($merged->get('steps.BranchB.text'))->toBe('b');
 });
+
+it('honors the parallel.sync_driver override on the sync queue', function () {
+    config()->set('agent-workflows.parallel.sync_driver', 'nonexistent-driver');
+
+    SummarizeAgent::fake(['A concise summary.']);
+    RiskAnalysisAgent::fake([['riskScore' => 1]]);
+
+    defineWorkflow('driver-override', fn (WorkflowDefinition $workflow) => $workflow
+        ->step(PrepareStep::class)
+        ->parallel([SummarizeAgent::class, RiskAnalysisAgent::class]));
+
+    try {
+        AgentWorkflow::start('driver-override', ['prompt' => 'Analyze this contract.']);
+        $this->fail('Expected the unknown concurrency driver to throw.');
+    } catch (InvalidArgumentException $e) {
+        expect($e->getMessage())->toContain('nonexistent-driver');
+    }
+});

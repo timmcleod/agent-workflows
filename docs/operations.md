@@ -47,4 +47,5 @@ The package's configuration lives in `config/agent-workflows.php`:
 | `tables.*` | Rename the package's tables (runs, steps, interrupts). |
 | `audit.step_output` | `full` (default) or `minimal` — what step audit rows snapshot as output. |
 | `sweep.stale_after` / `sweep.action` | Staleness threshold (seconds) and recovery action for the sweeper. |
+| `parallel.sync_driver` | Concurrency driver for parallel branches when workflow jobs run on the **sync queue** (test suites) — `sync` (default) keeps branches in-process; real queue connections are unaffected. |
 | `definition_drift` | `strict` (refuse to resume a changed definition) or `loose` (resume best-effort by step name) — see [definition drift](defining-workflows.md#definition-drift). |

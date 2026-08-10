@@ -2,6 +2,12 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
+## Unreleased (v0.13.0)
+
+**Fixed:**
+
+- **`parallel()` on the sync queue no longer requires concurrency configuration.** Test suites (sync queue driver) previously routed parallel branches through Laravel Concurrency's default process driver, whose child processes share neither the test database nor `Agent::fake()` state — failing with the opaque "Concurrent process failed with exit code [255]" unless consumers discovered `config(['concurrency.default' => 'sync'])`. Branches now run in-process on the sync queue (`parallel.sync_driver` config opts back into isolation); real queue connections are unaffected.
+
 ## v0.12.0 — 2026-07-31
 
 Feature release: class-based workflows start themselves. No schema changes, no migration.

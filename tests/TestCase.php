@@ -21,7 +21,6 @@ abstract class TestCase extends Orchestra
     protected function defineEnvironment($app): void
     {
         $app['config']->set('queue.default', 'sync');
-        $app['config']->set('concurrency.default', 'sync');
         // Conversation titles would trigger an unfaked LLM call per conversation.
         $app['config']->set('ai.conversations.generate_title', false);
         $app['config']->set('database.default', 'testing');
