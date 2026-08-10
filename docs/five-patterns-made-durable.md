@@ -87,6 +87,8 @@ Two things to know about the default merge: agent checkpoints (`steps.*`) merge 
 
 If any branch fails, the run fails at the parallel step and `retry()` re-runs the whole fan-out.
 
+The same act-when-everything-finishes semantics exist one level up, across whole runs: start several runs into a [run group](runs-and-observability.md#run-groups) and a `WorkflowGroupSettled` event fires when the last one reaches a terminal status — `Bus::batch` semantics at the run level.
+
 ## 4. Orchestrator-workers
 
 **Official:** return sub-agents from an agent's `tools()` method; the model orchestrates them.

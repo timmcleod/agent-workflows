@@ -203,4 +203,5 @@ Every workflow is a class extending `Workflow` with a `build` method, generated 
 - A workflow registers under the kebab-cased class name (`ContractReview` → `contract-review`). You may override the `name` method to choose your own. Runs store this name, so you should treat it as stable once runs exist.
 - You may start a run using the workflow's static `start` method as shown above, or via the facade — `AgentWorkflow::start` accepts the class name or the registered string name; all three reach the same definition.
 - You may override the `stateClass` method to hydrate a [typed state class](workflow-state.md) for every step of the workflow.
+- You may pass a singleton `key` to `start` to enforce one active run per business entity (`key: "ticket:{$ticket->id}"`), and a `group` to act once when a set of related runs finishes — see [runs & observability](runs-and-observability.md#singleton-keys).
 - Every run stores a hash of its definition at start time, so a deploy that changes a workflow refuses to resume its in-flight runs by default — see [definition drift](defining-workflows.md#definition-drift).

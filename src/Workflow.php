@@ -47,12 +47,24 @@ abstract class Workflow
     }
 
     /**
-     * Start a new run of this workflow.
+     * Start a new run of this workflow. With a singleton $key, returns the
+     * existing active run instead when one already holds the key; with a
+     * $group, the run joins a run group that settles when its last active
+     * member finishes. See WorkflowManager::start().
+     *
+     * Final on purpose: this is an entry point, not an override point — its
+     * parameter list may grow in minor releases, and PHP rejects subclass
+     * overrides whose signatures fall behind. Wrap it in your own named
+     * method instead.
      *
      * @param  array<string, mixed>  $input
      */
-    public static function start(array $input = [], ?object $participant = null): WorkflowRun
-    {
-        return app(WorkflowManager::class)->start(static::class, $input, $participant);
+    final public static function start(
+        array $input = [],
+        ?object $participant = null,
+        ?string $key = null,
+        ?string $group = null,
+    ): WorkflowRun {
+        return app(WorkflowManager::class)->start(static::class, $input, $participant, $key, $group);
     }
 }

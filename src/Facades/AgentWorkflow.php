@@ -9,7 +9,7 @@ use TimMcLeod\AgentWorkflows\WorkflowRegistry;
 
 /**
  * @method static \TimMcLeod\AgentWorkflows\WorkflowDefinition register(\TimMcLeod\AgentWorkflows\Workflow|string $workflow)
- * @method static \TimMcLeod\AgentWorkflows\Models\WorkflowRun start(string $name, array<string, mixed> $input = [], ?object $participant = null)
+ * @method static \TimMcLeod\AgentWorkflows\Models\WorkflowRun start(string $name, array<string, mixed> $input = [], ?object $participant = null, ?string $key = null, ?string $group = null)
  *
  * @see WorkflowManager
  */

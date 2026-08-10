@@ -2,6 +2,8 @@
 
 - [Introduction](#introduction)
 - [Inspecting Runs](#inspecting-runs)
+- [Singleton Keys](#singleton-keys)
+- [Run Groups](#run-groups)
 - [Managing Runs](#managing-runs)
 - [Events](#events)
 - [Dashboard](#dashboard)
@@ -34,6 +36,48 @@ ContractReview::start(input: [...], participant: $user);
 ```
 
 The static `start` method on the workflow class delegates to the `AgentWorkflow::start` facade method, which also accepts a registered string name; both reach the same definition. Registration itself happens at boot from the config `workflows` array — `AgentWorkflow::register` exists for runtime registration (tests, packages), and `AgentWorkflow::fake` swaps in the recording manager for [tests](testing.md).
+
+## Singleton Keys
+
+You may enforce "one active run per business entity" by passing a `key` when starting a run. Keys are scoped per workflow name:
+
+```php
+$run = TicketInvestigation::start($input, key: "ticket:{$ticket->id}");
+
+$run->wasRecentlyCreated; // false when an existing active run was returned
+```
+
+When an active run (pending, running, or awaiting) already holds the key, `start` returns **that run** instead of creating a new one. The idempotent return is side-effect free — no `WorkflowStarted` event, no step job — and `wasRecentlyCreated` is the caller's signal. The guard is a unique database index, not a check-then-act query, so two concurrent starts yield exactly one new run.
+
+A terminal transition (completed, failed, cancelled) frees the key, so history accumulates freely while at most one run per key is active. Retrying a failed run re-claims its key — and throws a descriptive exception when another run has claimed it since.
+
+When `key` and `group` are combined and `start` returns an existing run, the run adopts the requested group only when it has none — an established group is never silently rewritten.
+
+> [!WARNING]
+> Singleton keys rely on NULLs not colliding in unique indexes, which holds on SQLite, MySQL, MariaDB, and Postgres. SQL Server treats NULLs as equal there and is not supported.
+
+## Run Groups
+
+You may start several runs into a named group and act once when the last one finishes. Groups are global, so runs of different workflows may share one:
+
+```php
+TicketInvestigation::start($input, group: "conversation:{$id}");
+```
+
+When a run in the group reaches a terminal status and no members remain active, the group **settles**: a `WorkflowGroupSettled` event delivers every terminal run not covered by an earlier settle:
+
+```php
+use TimMcLeod\AgentWorkflows\Events\WorkflowGroupSettled;
+
+Event::listen(WorkflowGroupSettled::class, function (WorkflowGroupSettled $event) {
+    // $event->groupKey, $event->runs (Collection<WorkflowRun>)
+    SummarizeInvestigations::dispatch($event->groupKey, $event->runs);
+});
+```
+
+Groups may settle more than once: runs that join the group later — or a settled failed run that is retried or cancelled — are delivered in the following settle.
+
+The guarantee, precisely: each run outcome is **stamped** settled exactly once, atomically, so no two settles ever carry the same outcome and listeners need no locks or markers of their own. The event itself dispatches after the stamping transaction commits, with the same delivery guarantee as every other lifecycle event — and the [sweeper](operations.md) re-settles any group whose settle never ran (a worker died, or a lifecycle listener threw first). Queue your settle listeners if their work must survive listener failures.
 
 ## Managing Runs
 
@@ -70,6 +114,7 @@ The full set lives under the `TimMcLeod\AgentWorkflows\Events` namespace:
 | `WorkflowCompleted($run)` | The run finished successfully. |
 | `WorkflowFailed($run, $exception)` | The run failed. |
 | `WorkflowCancelled($run)` | The run was cancelled. |
+| `WorkflowGroupSettled($groupKey, $runs)` | A [run group](#run-groups) settled — carries the terminal runs delivered in this settle, exactly once each. |
 
 ## Dashboard
 

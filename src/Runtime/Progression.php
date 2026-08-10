@@ -43,17 +43,25 @@ class Progression
             // this step. A concurrent transition (another worker advanced,
             // the run failed or was resumed elsewhere) makes this a no-op —
             // exactly one completion may move the cursor.
+            $update = [
+                'state' => json_encode($state->all(), JSON_THROW_ON_ERROR),
+                'current_step' => $next !== null ? $next->id : $step->id,
+                'status' => $next !== null ? RunStatus::Running->value : RunStatus::Completed->value,
+                'finished_at' => $next !== null ? null : now(),
+                'updated_at' => now(),
+            ];
+
+            // Terminal transitions free the singleton key in the same update
+            // (skipped on a not-yet-migrated schema).
+            if ($next === null && WorkflowRun::schemaHasKeyColumns()) {
+                $update['active_key'] = null;
+            }
+
             $advanced = WorkflowRun::query()
                 ->whereKey($run->id)
                 ->where('current_step', $step->id)
                 ->where('status', RunStatus::Running->value)
-                ->update([
-                    'state' => json_encode($state->all(), JSON_THROW_ON_ERROR),
-                    'current_step' => $next !== null ? $next->id : $step->id,
-                    'status' => $next !== null ? RunStatus::Running->value : RunStatus::Completed->value,
-                    'finished_at' => $next !== null ? null : now(),
-                    'updated_at' => now(),
-                ]);
+                ->update($update);
 
             if ($advanced === 0) {
                 $stepRow->update([
@@ -89,6 +97,8 @@ class Progression
             WorkflowStepJob::dispatch($run->id, $next->id)->afterCommit();
         } else {
             event(new WorkflowCompleted($run));
+
+            app(GroupSettler::class)->settle($run->group_key);
         }
     }
 

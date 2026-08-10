@@ -28,6 +28,7 @@ use TimMcLeod\AgentWorkflows\Models\WorkflowStep;
 use TimMcLeod\AgentWorkflows\ParallelStepDefinition;
 use TimMcLeod\AgentWorkflows\Runtime\BranchRunner;
 use TimMcLeod\AgentWorkflows\Runtime\DriftGuard;
+use TimMcLeod\AgentWorkflows\Runtime\GroupSettler;
 use TimMcLeod\AgentWorkflows\Runtime\Interrupter;
 use TimMcLeod\AgentWorkflows\Runtime\ParallelStepCompleter;
 use TimMcLeod\AgentWorkflows\Runtime\Progression;
@@ -114,16 +115,22 @@ class WorkflowStepJob implements ShouldQueue
         // active run. This no-ops both duplicate failure reports and the
         // sync-queue case where an inner step's exception unwinds through
         // the jobs that dispatched it.
+        $update = [
+            'status' => RunStatus::Failed->value,
+            'failed_step' => $this->stepId,
+            'failure_reason' => $exception?->getMessage(),
+            'updated_at' => now(),
+        ];
+
+        if (WorkflowRun::schemaHasKeyColumns()) {
+            $update['active_key'] = null;
+        }
+
         $failed = WorkflowRun::query()
             ->whereKey($this->runId)
             ->where('current_step', $this->stepId)
             ->whereIn('status', [RunStatus::Pending->value, RunStatus::Running->value])
-            ->update([
-                'status' => RunStatus::Failed->value,
-                'failed_step' => $this->stepId,
-                'failure_reason' => $exception?->getMessage(),
-                'updated_at' => now(),
-            ]);
+            ->update($update);
 
         if ($failed === 0) {
             return;
@@ -133,6 +140,8 @@ class WorkflowStepJob implements ShouldQueue
 
         if ($run !== null) {
             event(new WorkflowFailed($run, $exception));
+
+            app(GroupSettler::class)->settle($run->group_key);
         }
     }
 

@@ -103,16 +103,22 @@ class ParallelStepCompleter
         // Conditional transition: only fail a run still executing this
         // parallel step — duplicate batch callbacks and races with other
         // transitions no-op.
+        $update = [
+            'status' => RunStatus::Failed->value,
+            'failed_step' => $stepId,
+            'failure_reason' => $exception->getMessage(),
+            'updated_at' => now(),
+        ];
+
+        if (WorkflowRun::schemaHasKeyColumns()) {
+            $update['active_key'] = null;
+        }
+
         $failed = WorkflowRun::query()
             ->whereKey($runId)
             ->where('current_step', $stepId)
             ->whereIn('status', [RunStatus::Pending->value, RunStatus::Running->value])
-            ->update([
-                'status' => RunStatus::Failed->value,
-                'failed_step' => $stepId,
-                'failure_reason' => $exception->getMessage(),
-                'updated_at' => now(),
-            ]);
+            ->update($update);
 
         if ($failed === 0) {
             return;
@@ -122,6 +128,8 @@ class ParallelStepCompleter
 
         if ($run !== null) {
             event(new WorkflowFailed($run, $exception));
+
+            app(GroupSettler::class)->settle($run->group_key);
         }
     }
 }

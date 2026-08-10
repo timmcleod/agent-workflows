@@ -6,8 +6,10 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use TimMcLeod\AgentWorkflows\Enums\InterruptType;
 use TimMcLeod\AgentWorkflows\Enums\RunStatus;
@@ -17,12 +19,16 @@ use TimMcLeod\AgentWorkflows\Events\WorkflowResumed;
 use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
 use TimMcLeod\AgentWorkflows\Jobs\WorkflowStepJob;
 use TimMcLeod\AgentWorkflows\Runtime\DriftGuard;
+use TimMcLeod\AgentWorkflows\Runtime\GroupSettler;
 use TimMcLeod\AgentWorkflows\WorkflowRegistry;
 use TimMcLeod\AgentWorkflows\WorkflowState;
 
 /**
  * @property string $id
  * @property string $name
+ * @property string|null $key
+ * @property string|null $active_key
+ * @property string|null $group_key
  * @property string $version
  * @property RunStatus $status
  * @property string|null $current_step
@@ -33,6 +39,7 @@ use TimMcLeod\AgentWorkflows\WorkflowState;
  * @property string|null $failure_reason
  * @property Carbon|null $started_at
  * @property Carbon|null $finished_at
+ * @property Carbon|null $settled_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
  */
@@ -66,6 +73,7 @@ class WorkflowRun extends Model
             'state' => 'array',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
+            'settled_at' => 'datetime',
         ];
     }
 
@@ -91,6 +99,22 @@ class WorkflowRun extends Model
     public function participant(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Whether the runs table carries the v0.13 key/group/meta columns.
+     * Engine writes consult this so an upgraded package keeps existing
+     * behavior working against a not-yet-migrated schema; the new start()
+     * arguments themselves require the migration. Deliberately unmemoized —
+     * terminal transitions are rare, and one schema lookup per transition
+     * is nothing next to a workflow step.
+     */
+    public static function schemaHasKeyColumns(): bool
+    {
+        return Schema::hasColumn(
+            config('agent-workflows.tables.runs', 'agent_workflow_runs'),
+            'active_key',
+        );
     }
 
     /**
@@ -308,13 +332,25 @@ class WorkflowRun extends Model
                 'updated_at' => now(),
             ]);
 
-            $run->update([
+            $update = [
                 'status' => RunStatus::Cancelled,
                 'finished_at' => now(),
-            ]);
+            ];
+
+            if (static::schemaHasKeyColumns()) {
+                $update['active_key'] = null;
+                // Cancelling a settled failed run changes its outcome —
+                // clear the stamp so the next settle delivers it, the same
+                // contract retry() honors.
+                $update['settled_at'] = null;
+            }
+
+            $run->update($update);
         });
 
         event(new WorkflowCancelled($this->refresh()));
+
+        app(GroupSettler::class)->settle($this->group_key);
 
         return $this;
     }
@@ -325,39 +361,56 @@ class WorkflowRun extends Model
      */
     public function retry(): static
     {
-        $step = DB::transaction(function () {
-            $run = static::query()->lockForUpdate()->findOrFail($this->id);
+        try {
+            $step = DB::transaction(function () {
+                $run = static::query()->lockForUpdate()->findOrFail($this->id);
 
-            if ($run->status !== RunStatus::Failed) {
-                throw new WorkflowException(
-                    "Only failed runs can be retried; run [{$run->id}] is [{$run->status->value}]."
-                );
-            }
+                if ($run->status !== RunStatus::Failed) {
+                    throw new WorkflowException(
+                        "Only failed runs can be retried; run [{$run->id}] is [{$run->status->value}]."
+                    );
+                }
 
-            $step = $run->failed_step ?? $run->current_step;
+                $step = $run->failed_step ?? $run->current_step;
 
-            // A hard-killed worker can leave in-flight audit rows that
-            // would block the new claim — including branch rows of a
-            // parallel fan-out, which would otherwise wedge every retry
-            // as a "duplicate delivery". A failed run has no legitimate
-            // in-flight work, so the retry supersedes all of it.
-            $run->steps()
-                ->where('status', StepStatus::Running->value)
-                ->update([
-                    'status' => StepStatus::Failed->value,
-                    'error' => 'Superseded by retry.',
-                    'finished_at' => now(),
-                ]);
+                // A hard-killed worker can leave in-flight audit rows that
+                // would block the new claim — including branch rows of a
+                // parallel fan-out, which would otherwise wedge every retry
+                // as a "duplicate delivery". A failed run has no legitimate
+                // in-flight work, so the retry supersedes all of it.
+                $run->steps()
+                    ->where('status', StepStatus::Running->value)
+                    ->update([
+                        'status' => StepStatus::Failed->value,
+                        'error' => 'Superseded by retry.',
+                        'finished_at' => now(),
+                    ]);
 
-            $run->update([
-                'status' => RunStatus::Pending,
-                'failed_step' => null,
-                'failure_reason' => null,
-                'finished_at' => null,
-            ]);
+                // The run is active again: re-claim its singleton key (the
+                // unique index throws when another run holds it now) and
+                // clear settled_at so a group delivers this run's new
+                // outcome in the following settle.
+                $update = [
+                    'status' => RunStatus::Pending,
+                    'failed_step' => null,
+                    'failure_reason' => null,
+                    'finished_at' => null,
+                ];
 
-            return $step;
-        });
+                if (static::schemaHasKeyColumns()) {
+                    $update['active_key'] = $run->key;
+                    $update['settled_at'] = null;
+                }
+
+                $run->update($update);
+
+                return $step;
+            });
+        } catch (UniqueConstraintViolationException) {
+            throw new WorkflowException(
+                "Run [{$this->id}] cannot be retried: another active run of [{$this->name}] now holds key [{$this->key}]."
+            );
+        }
 
         WorkflowStepJob::dispatch($this->id, $step)->afterCommit();
 

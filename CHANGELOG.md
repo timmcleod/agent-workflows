@@ -4,6 +4,17 @@ All notable changes to `timmcleod/agent-workflows` are documented here. During 0
 
 ## Unreleased (v0.13.0)
 
+Feature release extracted from a real chat-assistant integration: singleton keys, run groups, step labels and progress, app-owned run metadata, and a parallel-testing fix. Run `php artisan migrate` after upgrading (one additive migration on the runs table; existing behavior tolerates a not-yet-migrated schema until it runs).
+
+**Breaking (flagged per 0.x policy):**
+
+- `Workflow::start()` is now **final**. It is an entry point whose parameter list grows with the engine (this release adds `key:` and `group:`), and a subclass override with yesterday's signature is a fatal error at class-load time — better to refuse the override outright than break silently on each release. Wrap it in your own named method instead.
+
+**Added:**
+
+- **Singleton keys** — `start($input, key: "ticket:{$id}")` enforces one active run per business entity, scoped per workflow name. When an active run already holds the key, `start()` idempotently returns it (side-effect free: no `WorkflowStarted`, no step job; `wasRecentlyCreated === false` is the signal), adopting the requested `group:` only when the run has none. The guard is a unique `(name, active_key)` index — insert-first, no check-then-act race, savepoint-wrapped so it stays idempotent inside a caller's transaction on Postgres. Terminal transitions free the key; `retry()` re-claims it or throws when another run has claimed it since. Relies on NULLs not colliding in unique indexes: SQLite, MySQL, MariaDB, and Postgres are supported; SQL Server is not.
+- **Run groups** — `start($input, group: "conversation:{$id}")` joins runs into a global group (mixed workflow types welcome). When the last active member reaches a terminal status, a `WorkflowGroupSettled($groupKey, $runs)` event delivers the group's terminal runs. Each run outcome is **stamped** settled exactly once (guarded per-row claims — concurrent settles partition runs, never double-deliver), so listeners need no locks or markers; event dispatch carries the same after-commit guarantee as the other lifecycle events, and the sweeper re-settles groups whose settle never ran. Groups settle again for later joiners; `retry()` and `cancel()` clear a stamped run's `settled_at` so its new outcome is delivered in the following settle.
+
 **Fixed:**
 
 - **`parallel()` on the sync queue no longer requires concurrency configuration.** Test suites (sync queue driver) previously routed parallel branches through Laravel Concurrency's default process driver, whose child processes share neither the test database nor `Agent::fake()` state — failing with the opaque "Concurrent process failed with exit code [255]" unless consumers discovered `config(['concurrency.default' => 'sync'])`. Branches now run in-process on the sync queue (`parallel.sync_driver` config opts back into isolation); real queue connections are unaffected.

@@ -5,6 +5,7 @@
 - [The Sweeper](#the-sweeper)
 - [Execution Semantics](#execution-semantics)
 - [Configuration Reference](#configuration-reference)
+- [Upgrading](#upgrading)
 
 ## Introduction
 
@@ -49,3 +50,13 @@ The package's configuration lives in `config/agent-workflows.php`:
 | `sweep.stale_after` / `sweep.action` | Staleness threshold (seconds) and recovery action for the sweeper. |
 | `parallel.sync_driver` | Concurrency driver for parallel branches when workflow jobs run on the **sync queue** (test suites) — `sync` (default) keeps branches in-process; real queue connections are unaffected. |
 | `definition_drift` | `strict` (refuse to resume a changed definition) or `loose` (resume best-effort by step name) — see [definition drift](defining-workflows.md#definition-drift). |
+
+## Upgrading
+
+The package's migrations are additive. After upgrading, run:
+
+```bash
+php artisan migrate
+```
+
+Existing behavior keeps working against a not-yet-migrated runs table — the engine skips the new columns until they exist — so a deploy window between code and migration does not wedge in-flight runs. The new features themselves (`key:`, `group:`, `meta`) require the migration.

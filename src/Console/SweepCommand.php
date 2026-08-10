@@ -14,6 +14,7 @@ use TimMcLeod\AgentWorkflows\Jobs\WorkflowStepJob;
 use TimMcLeod\AgentWorkflows\Models\WorkflowInterrupt;
 use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
 use TimMcLeod\AgentWorkflows\Models\WorkflowStep;
+use TimMcLeod\AgentWorkflows\Runtime\GroupSettler;
 use TimMcLeod\AgentWorkflows\WorkflowRegistry;
 
 /**
@@ -37,6 +38,8 @@ class SweepCommand extends Command
     public function handle(WorkflowRegistry $registry): int
     {
         $this->expireTimedOutWaits($registry);
+
+        $this->resettleGroups();
 
         $staleAfter = (int) config('agent-workflows.sweep.stale_after', 600);
         $action = (string) config('agent-workflows.sweep.action', 'redispatch');
@@ -97,18 +100,25 @@ class SweepCommand extends Command
         ]);
 
         if ($action === 'fail') {
+            $update = [
+                'status' => RunStatus::Failed->value,
+                'failed_step' => $run->current_step,
+                'failure_reason' => "Stale for more than {$staleAfter} seconds; swept.",
+                'updated_at' => now(),
+            ];
+
+            if (WorkflowRun::schemaHasKeyColumns()) {
+                $update['active_key'] = null;
+            }
+
             $failed = WorkflowRun::query()
                 ->whereKey($run->id)
                 ->whereIn('status', [RunStatus::Pending->value, RunStatus::Running->value])
-                ->update([
-                    'status' => RunStatus::Failed->value,
-                    'failed_step' => $run->current_step,
-                    'failure_reason' => "Stale for more than {$staleAfter} seconds; swept.",
-                    'updated_at' => now(),
-                ]);
+                ->update($update);
 
             if ($failed === 1) {
                 event(new WorkflowFailed($run->refresh()));
+                app(GroupSettler::class)->settle($run->group_key);
                 $this->line("Failed stale run [{$run->id}] at step [{$run->current_step}].");
 
                 return true;
@@ -134,6 +144,28 @@ class SweepCommand extends Command
         }
 
         return true;
+    }
+
+    /**
+     * Deliver settles that never fired: a throwing lifecycle listener (or a
+     * worker dying) between a run's terminal transition and its group's
+     * settle leaves the group fully terminal with unstamped members.
+     * settle() re-checks everything under its own transaction, so false
+     * positives no-op.
+     */
+    protected function resettleGroups(): void
+    {
+        if (! WorkflowRun::schemaHasKeyColumns()) {
+            return;
+        }
+
+        WorkflowRun::query()
+            ->whereNotNull('group_key')
+            ->whereNull('settled_at')
+            ->whereIn('status', [RunStatus::Failed->value, RunStatus::Completed->value, RunStatus::Cancelled->value])
+            ->distinct()
+            ->pluck('group_key')
+            ->each(fn (string $groupKey) => app(GroupSettler::class)->settle($groupKey));
     }
 
     /**
@@ -178,18 +210,25 @@ class SweepCommand extends Command
         }
 
         // Conditional transition: a human resuming at this instant wins.
+        $update = [
+            'status' => RunStatus::Failed->value,
+            'failed_step' => $interrupt->step_id,
+            'failure_reason' => "Timed out waiting for a human at [{$interrupt->step_id}].",
+            'updated_at' => now(),
+        ];
+
+        if (WorkflowRun::schemaHasKeyColumns()) {
+            $update['active_key'] = null;
+        }
+
         $failed = WorkflowRun::query()
             ->whereKey($run->id)
             ->where('status', RunStatus::AwaitingHuman->value)
-            ->update([
-                'status' => RunStatus::Failed->value,
-                'failed_step' => $interrupt->step_id,
-                'failure_reason' => "Timed out waiting for a human at [{$interrupt->step_id}].",
-                'updated_at' => now(),
-            ]);
+            ->update($update);
 
         if ($failed === 1) {
             event(new WorkflowFailed($run->refresh()));
+            app(GroupSettler::class)->settle($run->group_key);
             $this->line("Failed timed-out run [{$run->id}] at [{$interrupt->step_id}].");
         }
     }
