@@ -2,7 +2,7 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
-## Unreleased (v0.13.0)
+## v0.13.0 — 2026-08-10
 
 Feature release extracted from a real chat-assistant integration: singleton keys, run groups, step labels and progress, app-owned run metadata, and a parallel-testing fix. Run `php artisan migrate` after upgrading (one additive migration on the runs table; existing behavior tolerates a not-yet-migrated schema until it runs).
 
