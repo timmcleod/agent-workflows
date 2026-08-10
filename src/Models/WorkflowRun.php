@@ -33,6 +33,7 @@ use TimMcLeod\AgentWorkflows\WorkflowState;
  * @property RunStatus $status
  * @property string|null $current_step
  * @property array<string, mixed>|null $state
+ * @property array<string, mixed>|null $meta
  * @property string|null $participant_type
  * @property int|string|null $participant_id
  * @property string|null $failed_step
@@ -71,6 +72,7 @@ class WorkflowRun extends Model
         return [
             'status' => RunStatus::class,
             'state' => 'array',
+            'meta' => 'array',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
             'settled_at' => 'datetime',
@@ -131,6 +133,26 @@ class WorkflowRun extends Model
         }
 
         return WorkflowState::make($this->state ?? []);
+    }
+
+    /**
+     * Merge values into the app-owned meta column — external references,
+     * audit tags, notification receipts. The engine never reads or writes
+     * meta: checkpoints, retries, sweeps, and resumes leave it untouched.
+     * The merge re-reads under a lock so two writers do not clobber each
+     * other; nested arrays are replaced, not deep-merged.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    public function mergeMeta(array $values): static
+    {
+        DB::transaction(function () use ($values) {
+            $fresh = static::query()->lockForUpdate()->findOrFail($this->id);
+
+            $fresh->update(['meta' => array_merge($fresh->meta ?? [], $values)]);
+        });
+
+        return $this->refresh();
     }
 
     /**

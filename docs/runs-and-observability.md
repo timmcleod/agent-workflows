@@ -3,6 +3,7 @@
 - [Introduction](#introduction)
 - [Inspecting Runs](#inspecting-runs)
   - [Run Progress](#run-progress)
+  - [Run Metadata](#run-metadata)
 - [Singleton Keys](#singleton-keys)
 - [Run Groups](#run-groups)
 - [Managing Runs](#managing-runs)
@@ -49,6 +50,16 @@ $run->progress();
 ```
 
 Labels come from the optional `label` argument every step-declaring method accepts (see [defining workflows](defining-workflows.md#steps)); unlabeled steps get sensible defaults. Progress resolves against the definition's ordered top-level steps — a cursor inside a parallel branch or a condition branch reports the owning step, and loops do not inflate the total. The method never throws: when the definition has drifted past the cursor's step, or the workflow is not registered in the current process, it degrades to the raw step id with `index` and `total` zeroed.
+
+### Run Metadata
+
+The `meta` column is app-owned storage on the run — external references, audit tags, notification receipts. The engine never reads or writes it: checkpoints, retries, sweeps, and resumes leave it untouched. The `mergeMeta` method merges under a lock, so two writers do not clobber each other:
+
+```php
+$run->mergeMeta(['slack_ts' => $timestamp]);
+
+$run->meta; // ['slack_ts' => '...']
+```
 
 ## Singleton Keys
 
