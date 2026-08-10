@@ -15,8 +15,16 @@ class ConditionStepDefinition extends StepDefinition
         public readonly Closure $condition,
         public readonly StepDefinition $whenTrue,
         public readonly ?StepDefinition $whenFalse = null,
+        ?string $label = null,
     ) {
-        parent::__construct($id, StepType::Condition);
+        parent::__construct($id, StepType::Condition, label: $label);
+    }
+
+    public function displayLabel(): string
+    {
+        return $this->label ?? (str_starts_with($this->id, 'when:')
+            ? 'Evaluating a condition'
+            : static::humanizeId($this->id));
     }
 
     public function children(): array

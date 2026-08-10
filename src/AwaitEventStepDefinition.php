@@ -14,8 +14,16 @@ class AwaitEventStepDefinition extends StepDefinition
         string $id,
         public readonly string $event,
         public readonly ?array $schema = null,
+        ?string $label = null,
     ) {
-        parent::__construct($id, StepType::AwaitEvent);
+        parent::__construct($id, StepType::AwaitEvent, label: $label);
+    }
+
+    public function displayLabel(): string
+    {
+        return $this->label ?? (str_starts_with($this->id, 'await-event:')
+            ? 'Waiting for an event'
+            : static::humanizeId($this->id));
     }
 
     public function fingerprint(): array

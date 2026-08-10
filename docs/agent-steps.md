@@ -48,6 +48,8 @@ If a step does not define a prompt, the agent will be prompted with the value of
 
 Agent targets in other step types accept prompts as well: the `when` method accepts `thenPrompt` and `elsePrompt` arguments for its branches, and the `evaluate` method accepts a `prompt` argument for its loop body.
 
+Steps also accept an optional `label` for live progress displays — see [defining workflows](defining-workflows.md#steps) and [`$run->progress()`](runs-and-observability.md#run-progress).
+
 ## Retrieving Step Output
 
 After an agent step runs, its output is checkpointed into the workflow state under `steps.{step-id}`:

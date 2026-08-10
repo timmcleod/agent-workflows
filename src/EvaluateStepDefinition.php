@@ -18,8 +18,9 @@ class EvaluateStepDefinition extends StepDefinition
         public readonly StepDefinition $body,
         public readonly Closure $until,
         public readonly int $maxIterations = 3,
+        ?string $label = null,
     ) {
-        parent::__construct($id, StepType::Evaluate);
+        parent::__construct($id, StepType::Evaluate, label: $label);
     }
 
     public function fingerprint(): array

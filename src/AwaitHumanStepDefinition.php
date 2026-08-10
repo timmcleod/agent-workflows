@@ -22,8 +22,15 @@ class AwaitHumanStepDefinition extends StepDefinition
         public readonly ?array $schema = null,
         public readonly ?int $timeout = null,
         public readonly ?array $timeoutResponse = null,
+        ?string $label = null,
     ) {
-        parent::__construct($id, StepType::AwaitHuman);
+        parent::__construct($id, StepType::AwaitHuman, label: $label);
+    }
+
+    public function displayLabel(): string
+    {
+        // The reason is already the human-facing description of the wait.
+        return $this->label ?? $this->reason ?? 'Waiting for a person';
     }
 
     public function fingerprint(): array

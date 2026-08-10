@@ -83,6 +83,15 @@ Agent steps take an optional `prompt` argument — a string, a closure over the 
 
 Step targets must be real classes — a typo'd class string throws at definition time rather than becoming a callback step that explodes inside a queue worker.
 
+Every step-declaring method (`step`, `when`, `parallel`, `evaluate`, `debate`, `awaitHuman`, `awaitEvent`) also accepts an optional `label` — a human-facing description surfaced by [`$run->progress()`](runs-and-observability.md#run-progress) for live progress displays:
+
+```php
+->step(GatherTicketContext::class, label: 'Reading the full message thread')
+->parallel([...], label: 'Analyzing attachments and prior tickets')
+```
+
+Unlabeled steps get sensible defaults: class-based ids humanize (`GatherTicketContext` becomes "Gather ticket context"), structural steps get purpose-built descriptions ("Running parallel branches", "Evaluating a condition"), and `awaitHuman` falls back to its `reason`. Labels are cosmetic — like `awaitHuman` reasons, they are excluded from the [definition hash](#definition-drift), so adding or editing them never strands in-flight runs in strict drift mode.
+
 ### Callback Steps
 
 Callback steps are plain invokable classes. They receive the current state and must return the state (or `null` to leave it unchanged — returning anything else fails the step):

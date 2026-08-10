@@ -54,9 +54,9 @@ class WorkflowDefinition
      * @param  class-string  $target
      * @param  Closure(WorkflowState): string|string|null  $prompt
      */
-    public function step(string $target, ?string $as = null, Closure|string|null $prompt = null): static
+    public function step(string $target, ?string $as = null, Closure|string|null $prompt = null, ?string $label = null): static
     {
-        $this->steps[] = $this->makeStep($target, $as, $prompt);
+        $this->steps[] = $this->makeStep($target, $as, $prompt, $label);
 
         return $this;
     }
@@ -80,6 +80,7 @@ class WorkflowDefinition
         ?string $as = null,
         Closure|string|null $thenPrompt = null,
         Closure|string|null $elsePrompt = null,
+        ?string $label = null,
     ): static {
         $whenTrue = $this->makeStep($then, null, $thenPrompt);
         $whenFalse = $else !== null ? $this->makeStep($else, null, $elsePrompt) : null;
@@ -89,6 +90,7 @@ class WorkflowDefinition
             $condition,
             $whenTrue,
             $whenFalse,
+            $label,
         );
 
         return $this;
@@ -104,7 +106,7 @@ class WorkflowDefinition
      * @param  array<int|string, class-string>  $targets  string keys become step aliases
      * @param  Closure(array<string, array<string, mixed>>, array<string, mixed>): (WorkflowState|array<string, mixed>)|null  $merge
      */
-    public function parallel(array $targets, ?Closure $merge = null, string $mode = 'batch', ?string $as = null): static
+    public function parallel(array $targets, ?Closure $merge = null, string $mode = 'batch', ?string $as = null, ?string $label = null): static
     {
         if (! in_array($mode, ['batch', 'sync'], true)) {
             throw new InvalidArgumentException("Parallel mode must be \"batch\" or \"sync\", [{$mode}] given.");
@@ -125,6 +127,7 @@ class WorkflowDefinition
             $branches,
             $merge,
             $mode,
+            $label,
         );
 
         return $this;
@@ -145,6 +148,7 @@ class WorkflowDefinition
         int $maxIterations = 3,
         ?string $as = null,
         Closure|string|null $prompt = null,
+        ?string $label = null,
     ): static {
         if ($maxIterations < 1) {
             throw new InvalidArgumentException('maxIterations must be at least 1.');
@@ -158,7 +162,7 @@ class WorkflowDefinition
         // The body deliberately shares the evaluate step's id (see EvaluateStepDefinition).
         $body = new StepDefinition($id, $this->typeFor($target), $target, $prompt);
 
-        $this->steps[] = new EvaluateStepDefinition($id, $body, $until, $maxIterations);
+        $this->steps[] = new EvaluateStepDefinition($id, $body, $until, $maxIterations, $label);
 
         return $this;
     }
@@ -206,6 +210,7 @@ class WorkflowDefinition
         ?Closure $openingPrompt = null,
         ?Closure $rebuttalPrompt = null,
         ?Closure $judgePrompt = null,
+        ?string $label = null,
     ): static {
         if (count($debaters) < 2) {
             throw new InvalidArgumentException(
@@ -268,6 +273,7 @@ class WorkflowDefinition
             ),
             $until ?? fn (WorkflowState $state): bool => $state->get('steps.'.$id.'.judge.consensus') === true,
             $rounds,
+            $label,
         );
 
         return $this;
@@ -294,6 +300,7 @@ class WorkflowDefinition
         int|\DateInterval|null $timeout = null,
         ?array $timeoutResponse = null,
         ?string $as = null,
+        ?string $label = null,
     ): static {
         if ($timeout instanceof \DateInterval) {
             $timeout = (int) CarbonInterval::instance($timeout)->totalSeconds;
@@ -313,6 +320,7 @@ class WorkflowDefinition
             $schema !== null ? $this->normalizeSchema($schema) : null,
             $timeout,
             $timeoutResponse,
+            $label,
         );
 
         return $this;
@@ -367,12 +375,13 @@ class WorkflowDefinition
      *
      * @param  array<string, mixed>|null  $schema
      */
-    public function awaitEvent(string $event, ?string $as = null, ?array $schema = null): static
+    public function awaitEvent(string $event, ?string $as = null, ?array $schema = null, ?string $label = null): static
     {
         $this->steps[] = new AwaitEventStepDefinition(
             $this->stepId($as ?? 'await-event:'.$event, explicit: $as !== null),
             $event,
             $schema !== null ? $this->normalizeSchema($schema) : null,
+            $label,
         );
 
         return $this;
@@ -472,9 +481,9 @@ class WorkflowDefinition
      * @param  class-string  $target
      * @param  Closure(WorkflowState): string|string|null  $prompt
      */
-    protected function makeStep(string $target, ?string $as = null, Closure|string|null $prompt = null): StepDefinition
+    protected function makeStep(string $target, ?string $as = null, Closure|string|null $prompt = null, ?string $label = null): StepDefinition
     {
-        return new StepDefinition($this->stepId($as ?? $target, explicit: $as !== null), $this->typeFor($target), $target, $prompt);
+        return new StepDefinition($this->stepId($as ?? $target, explicit: $as !== null), $this->typeFor($target), $target, $prompt, $label);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 - [Introduction](#introduction)
 - [Inspecting Runs](#inspecting-runs)
+  - [Run Progress](#run-progress)
 - [Singleton Keys](#singleton-keys)
 - [Run Groups](#run-groups)
 - [Managing Runs](#managing-runs)
@@ -36,6 +37,18 @@ ContractReview::start(input: [...], participant: $user);
 ```
 
 The static `start` method on the workflow class delegates to the `AgentWorkflow::start` facade method, which also accepts a registered string name; both reach the same definition. Registration itself happens at boot from the config `workflows` array — `AgentWorkflow::register` exists for runtime registration (tests, packages), and `AgentWorkflow::fake` swaps in the recording manager for [tests](testing.md).
+
+### Run Progress
+
+The `progress` method reports where a run is within its workflow, for live progress displays:
+
+```php
+$run->progress();
+// ['step' => 'judge', 'label' => 'Fact-checking the report',
+//  'index' => 4, 'total' => 5, 'status' => 'running']
+```
+
+Labels come from the optional `label` argument every step-declaring method accepts (see [defining workflows](defining-workflows.md#steps)); unlabeled steps get sensible defaults. Progress resolves against the definition's ordered top-level steps — a cursor inside a parallel branch or a condition branch reports the owning step, and loops do not inflate the total. The method never throws: when the definition has drifted past the cursor's step, or the workflow is not registered in the current process, it degrades to the raw step id with `index` and `total` zeroed.
 
 ## Singleton Keys
 

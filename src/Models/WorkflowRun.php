@@ -134,6 +134,50 @@ class WorkflowRun extends Model
     }
 
     /**
+     * Where the run is within its workflow, for progress displays: the
+     * owning TOP-LEVEL step's id and human-facing label, its 1-based index,
+     * and the definition's top-level step count. A cursor inside a parallel
+     * branch or a condition branch reports the owning step, and loops do
+     * not inflate the total.
+     *
+     * Never throws: when the definition is not registered in this process,
+     * or has drifted past the cursor's step, the raw step id is returned as
+     * the label with index and total zeroed.
+     *
+     * @return array{step: string|null, label: string, index: int, total: int, status: string}
+     */
+    public function progress(): array
+    {
+        $registry = app(WorkflowRegistry::class);
+
+        if ($this->current_step !== null && $registry->has($this->name)) {
+            $steps = $registry->get($this->name)->steps();
+
+            foreach ($steps as $index => $step) {
+                $ids = [$step->id, ...array_map(fn ($child) => $child->id, $step->children())];
+
+                if (in_array($this->current_step, $ids, true)) {
+                    return [
+                        'step' => $step->id,
+                        'label' => $step->displayLabel(),
+                        'index' => $index + 1,
+                        'total' => count($steps),
+                        'status' => $this->status->value,
+                    ];
+                }
+            }
+        }
+
+        return [
+            'step' => $this->current_step,
+            'label' => (string) $this->current_step,
+            'index' => 0,
+            'total' => 0,
+            'status' => $this->status->value,
+        ];
+    }
+
+    /**
      * Resume a run parked by awaitHuman() or an agent tool-approval pause.
      *
      * For awaitHuman interrupts the response is validated against the

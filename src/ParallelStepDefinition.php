@@ -17,8 +17,16 @@ class ParallelStepDefinition extends StepDefinition
         public readonly array $branches,
         public readonly ?Closure $merge = null,
         public readonly string $mode = 'batch',
+        ?string $label = null,
     ) {
-        parent::__construct($id, StepType::Parallel);
+        parent::__construct($id, StepType::Parallel, label: $label);
+    }
+
+    public function displayLabel(): string
+    {
+        return $this->label ?? (str_starts_with($this->id, 'parallel:')
+            ? 'Running parallel branches'
+            : static::humanizeId($this->id));
     }
 
     public function children(): array

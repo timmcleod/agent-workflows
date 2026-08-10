@@ -27,6 +27,28 @@ it('walks steps sequentially via after()', function () {
         ->and(fn () => $definition->after('Nope'))->toThrow(WorkflowException::class);
 });
 
+it('excludes labels from the definition hash', function () {
+    $until = fn ($state) => true;
+
+    $plain = (new WorkflowDefinition('labeled'))
+        ->step(PrepareStep::class)
+        ->when(fn ($state) => true, then: TransformStep::class)
+        ->parallel([TransformStep::class, SummarizeAgent::class])
+        ->evaluate(TransformStep::class, until: $until, as: 'loop')
+        ->awaitHuman(reason: 'Sign-off')
+        ->awaitEvent('payment.confirmed');
+
+    $labeled = (new WorkflowDefinition('labeled'))
+        ->step(PrepareStep::class, label: 'Getting ready')
+        ->when(fn ($state) => true, then: TransformStep::class, label: 'Choosing a path')
+        ->parallel([TransformStep::class, SummarizeAgent::class], label: 'Fanning out')
+        ->evaluate(TransformStep::class, until: $until, as: 'loop', label: 'Polishing')
+        ->awaitHuman(reason: 'Sign-off', label: 'Waiting on the boss')
+        ->awaitEvent('payment.confirmed', label: 'Waiting on the wire');
+
+    expect($labeled->hash())->toBe($plain->hash());
+});
+
 it('includes string prompts in the definition hash', function () {
     $one = (new WorkflowDefinition('p'))->step(SummarizeAgent::class, prompt: 'Summarize A.');
     $changed = (new WorkflowDefinition('p'))->step(SummarizeAgent::class, prompt: 'Summarize B.');
