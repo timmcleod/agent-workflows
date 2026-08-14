@@ -12,6 +12,8 @@ class AgentStepResult
      * @param  array<string, mixed>|null  $structured
      * @param  array<string, int>  $usage
      * @param  array<int, array{id: string, tool: string, arguments: array<string, mixed>, reason: string|null}>  $pendingApprovals
+     * @param  array<int, array<string, mixed>>  $calls  one entry per provider
+     *                                                   call inside the run, in call order
      */
     public function __construct(
         public readonly string $text,
@@ -19,6 +21,8 @@ class AgentStepResult
         public readonly array $usage,
         public readonly ?string $conversationId,
         public readonly array $pendingApprovals = [],
+        public readonly ?string $invocationId = null,
+        public readonly array $calls = [],
     ) {}
 
     public function hasPendingApprovals(): bool
@@ -44,5 +48,16 @@ class AgentStepResult
         }
 
         return $usage;
+    }
+
+    /**
+     * Several results' call audits concatenated in call order, for the same
+     * multi-call step bodies sum() serves.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function calls(self ...$results): array
+    {
+        return array_merge(...array_map(fn (self $result) => $result->calls, $results));
     }
 }

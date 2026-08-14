@@ -4,6 +4,16 @@ All notable changes to `timmcleod/agent-workflows` are documented here. During 0
 
 ## Unreleased
 
+Run `php artisan migrate` after upgrading (one additive migration on the steps table; existing behavior tolerates a not-yet-migrated schema until it runs).
+
+**Added:**
+
+- **Per-call audit on step rows.** Every agent-backed attempt now records a `calls` column: one entry per provider call inside the turn, in call order, carrying the SDK's invocation id, the provider and model that actually responded (under failover, not necessarily the ones requested), per-call token usage, the finish reason, and the turn's tool calls and results. Multi-prompt step bodies compose naturally: a `debate()` round row carries one entry per debater plus the judge, each group distinguishable by invocation id. The new `audit.step_calls` config option (`"full"` default, `"minimal"`) trims tool arguments and results, which can be large and can carry sensitive input. Non-agent steps record `null`. The data comes straight off the SDK's response object, so it works on `laravel/ai` v0.10.3 with no event listeners.
+
+**Fixed:**
+
+- **Attempts parked by a tool-approval pause now record their token usage** (and per-call audit). The pause follows a completed, billed provider call, but the interrupt path dropped the usage the executor was carrying, so every approval pause undercounted cost accounting; `awaitHuman`-heavy workflows undercounted the most. Discarded-result rows (a concurrent cancel or resume winning the race) now keep their usage too: the result is thrown away, the bill was still paid.
+
 **Changed:**
 
 - **Minimum `laravel/ai` raised from `~0.10.1` to `^0.10.3`.** The floor is deliberate, not just a widening: `laravel/ai` v0.10.2 added `AnthropicSchemaSanitizer`, which strips the JSON Schema keywords Anthropic's native structured output rejects (`minLength`, `pattern`, `minimum`, `multipleOf`, `uniqueItems`, most `format` values, and more) and folds each into the schema node's description so the model still honors the intent. Without it, a structured agent step (or a `debate()` judge, which must implement `HasStructuredOutput`) fails outright on Anthropic whenever its schema carries one of those keywords. Consumers resolving to 0.10.1 were exposed to that; the raised floor closes it. No package code changes: the suite and PHPStan pass unchanged against v0.10.3.

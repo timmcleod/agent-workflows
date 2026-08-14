@@ -2,6 +2,7 @@
 
 - [Introduction](#introduction)
 - [Inspecting Runs](#inspecting-runs)
+  - [Per-Call Audit](#per-call-audit)
   - [Run Progress](#run-progress)
   - [Run Metadata](#run-metadata)
 - [Singleton Keys](#singleton-keys)
@@ -28,8 +29,30 @@ $run->current_step;    // the cursor
 $run->state;           // the latest checkpoint (array)
 $run->steps;           // audit log: every attempt of every step, with
                        // input-state hash, output-state snapshot, token usage,
-                       // timings, and errors
+                       // per-call detail, timings, and errors
 ```
+
+### Per-Call Audit
+
+An agent step is one full agentic turn, which may span several provider calls: the model answers, calls a tool, sees the result, answers again. The step row's `calls` column records each of those calls in order, so a slow or expensive step is not a black box between `started_at` and `finished_at`:
+
+```php
+$run->steps()->where('step_id', 'judge')->latest('id')->first()->calls;
+// [
+//   ['invocation_id' => '019...', 'provider' => 'anthropic', 'model' => 'claude-sonnet-5',
+//    'finish_reason' => 'tool_calls', 'usage' => ['prompt_tokens' => 2114, ...],
+//    'tool_calls' => [['id' => 'toolu_1', 'name' => 'fetch_filings', 'arguments' => [...]]],
+//    'tool_results' => [['id' => 'toolu_1', 'name' => 'fetch_filings', 'result' => [...]]]],
+//   ['invocation_id' => '019...', 'provider' => 'anthropic', 'model' => 'claude-sonnet-5',
+//    'finish_reason' => 'stop', 'usage' => ['prompt_tokens' => 3480, ...]],
+// ]
+```
+
+Each entry carries the SDK's invocation id (one id per prompt, so a [debate round's](agent-debate.md) debaters and judge stay distinguishable on one row), the provider and model that actually responded (under failover, not necessarily the ones requested), per-call token usage, and the finish reason. `provider` and `model` come from the SDK's response metadata; the step's summed usage stays in the `usage` column.
+
+Tool arguments and results can be large, and they can carry sensitive input. The `audit.step_calls` config option trims them: `"full"` (default) records both; `"minimal"` keeps only tool ids and names. Steps that make no provider calls record `null`, as do rows written before the column's migration ran.
+
+An attempt parked by a [tool-approval pause](human-in-the-loop.md#tool-approvals) records the usage and calls of the provider call that requested the approval, since that call completed and was billed even though the step did not finish. The resumed attempt is a separate row carrying its own calls, so cost accounting sums cleanly over attempts.
 
 You may associate a run with a user — or any model — via the polymorphic `participant` argument:
 

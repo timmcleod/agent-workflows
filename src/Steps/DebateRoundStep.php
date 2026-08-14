@@ -83,7 +83,7 @@ class DebateRoundStep
             );
         }
 
-        return new StepResult($state, AgentStepResult::sum(...$results));
+        return new StepResult($state, AgentStepResult::sum(...$results), calls: AgentStepResult::calls(...$results));
     }
 
     /**

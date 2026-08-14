@@ -86,10 +86,20 @@ return [
     | consumes them), and interrupt rows always store the state the run
     | parked with (approval UIs read it).
     |
+    | step_calls controls the per-call audit on agent-backed rows: one
+    | entry per provider call, recording the SDK invocation id, responding
+    | provider and model, per-call token usage, and finish reason.
+    |
+    | "full"    additionally records each tool call's arguments and each
+    |           tool result (default). These can be large, and they can
+    |           carry sensitive input.
+    | "minimal" keeps only ids and names for tool calls and results.
+    |
     */
 
     'audit' => [
         'step_output' => env('AGENT_WORKFLOWS_AUDIT_STEP_OUTPUT', 'full'),
+        'step_calls' => env('AGENT_WORKFLOWS_AUDIT_STEP_CALLS', 'full'),
     ],
 
     /*

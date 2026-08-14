@@ -21,14 +21,23 @@ use TimMcLeod\AgentWorkflows\WorkflowState;
  */
 class Interrupter
 {
+    /**
+     * @param  array<string, int>|null  $usage  tokens spent by the attempt
+     *                                          before it parked: a pause follows
+     *                                          a completed, billed provider call
+     * @param  array<int, array<string, mixed>>|null  $calls  per-provider-call
+     *                                                        audit detail
+     */
     public function interrupt(
         WorkflowRun $run,
         StepDefinition $step,
         WorkflowStep $stepRow,
         WorkflowState $state,
         PendingInterrupt $pending,
+        ?array $usage = null,
+        ?array $calls = null,
     ): ?WorkflowInterrupt {
-        $interrupt = DB::transaction(function () use ($run, $step, $stepRow, $state, $pending) {
+        $interrupt = DB::transaction(function () use ($run, $step, $stepRow, $state, $pending, $usage, $calls) {
             // Conditional park: only a run still executing this step may be
             // interrupted — a concurrent transition (cancel, fail) wins.
             $parked = WorkflowRun::query()
@@ -42,9 +51,13 @@ class Interrupter
                 ]);
 
             if ($parked === 0) {
+                // The interrupt is discarded, but the provider calls behind
+                // it were still billed; the audit row keeps their cost.
                 $stepRow->update([
                     'status' => StepStatus::Failed,
                     'error' => 'Run state changed during execution; interrupt discarded.',
+                    'usage' => $usage,
+                    ...WorkflowStep::callsAudit($calls),
                     'finished_at' => now(),
                 ]);
 
@@ -77,6 +90,8 @@ class Interrupter
             $stepRow->update([
                 'status' => StepStatus::Interrupted,
                 'output_state' => $state->all(),
+                'usage' => $usage,
+                ...WorkflowStep::callsAudit($calls),
                 'finished_at' => now(),
             ]);
 

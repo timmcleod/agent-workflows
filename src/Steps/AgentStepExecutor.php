@@ -50,7 +50,7 @@ class AgentStepExecutor implements StepExecutor
                 type: InterruptType::Approval,
                 reason: $this->approvalReason($step, $result),
                 context: ['approvals' => $result->pendingApprovals],
-            ));
+            ), $result->calls);
         }
 
         $state->set($key, array_filter([
@@ -61,7 +61,7 @@ class AgentStepExecutor implements StepExecutor
             'conversation_id' => $result->conversationId,
         ], fn (mixed $value) => $value !== null && $value !== ''));
 
-        return new StepResult($state, $result->usage);
+        return new StepResult($state, $result->usage, calls: $result->calls);
     }
 
     protected function approvalReason(StepDefinition $step, AgentStepResult $result): string

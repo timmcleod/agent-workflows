@@ -26,6 +26,8 @@ class Progression
      * @param  array<string, int>|null  $usage
      * @param  StepDefinition|null  $nextOverride  explicit successor (condition
      *                                             branches, evaluate re-dispatch)
+     * @param  array<int, array<string, mixed>>|null  $calls  per-provider-call
+     *                                                        audit detail
      */
     public function complete(
         WorkflowRun $run,
@@ -35,10 +37,11 @@ class Progression
         WorkflowState $state,
         ?array $usage = null,
         ?StepDefinition $nextOverride = null,
+        ?array $calls = null,
     ): void {
         $next = $nextOverride ?? $definition->after($step->id);
 
-        $advanced = DB::transaction(function () use ($run, $stepRow, $state, $usage, $step, $next) {
+        $advanced = DB::transaction(function () use ($run, $stepRow, $state, $usage, $calls, $step, $next) {
             // Conditional advance: commit only if the run is still executing
             // this step. A concurrent transition (another worker advanced,
             // the run failed or was resumed elsewhere) makes this a no-op —
@@ -64,9 +67,13 @@ class Progression
                 ->update($update);
 
             if ($advanced === 0) {
+                // The result is discarded, but the provider calls behind it
+                // were still billed; the audit row keeps their cost.
                 $stepRow->update([
                     'status' => StepStatus::Failed,
                     'error' => 'Run state changed during execution; result discarded.',
+                    'usage' => $usage,
+                    ...WorkflowStep::callsAudit($calls),
                     'finished_at' => now(),
                 ]);
 
@@ -77,6 +84,7 @@ class Progression
                 'status' => StepStatus::Completed,
                 'output_state' => $this->auditSnapshot($step, $state),
                 'usage' => $usage,
+                ...WorkflowStep::callsAudit($calls),
                 'finished_at' => now(),
             ]);
 

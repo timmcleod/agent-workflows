@@ -135,6 +135,7 @@ Want to see it run first? The **[demo app](https://github.com/timmcleod/agent-wo
 | Agent steps | Prompts live on the step, not the agent; a step is one full agentic turn. | [Agent Steps](docs/agent-steps.md) |
 | Workflow state | A checkpointed bag with `output()` addressing and typed per-workflow classes. | [Workflow State](docs/workflow-state.md) |
 | Audit trail & events | Every attempt an Eloquent row (timings, tokens, errors); lifecycle events for everything. | [Runs & Observability](docs/runs-and-observability.md) |
+| Per-call audit | Each attempt records every provider call inside it: model, tokens, tool calls, invocation id. | [Runs & Observability](docs/runs-and-observability.md#per-call-audit) |
 | Testing fakes | `AgentWorkflow::fake()` assertions over really-executing workflows. | [Testing](docs/testing.md) |
 | Definition drift | Deploy-changed workflows refuse to resume in-flight runs by default. | [Defining Workflows](docs/defining-workflows.md#definition-drift) |
 | Operations | A sweeper for dead workers, queue-sizing rules, at-least-once semantics. | [Operations](docs/operations.md) |

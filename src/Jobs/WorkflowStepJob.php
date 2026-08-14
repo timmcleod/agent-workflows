@@ -226,14 +226,19 @@ class WorkflowStepJob implements ShouldQueue
         $result = $this->attempt($stepRow, fn () => app(StepExecutors::class)->for($step)->execute($step, $state));
 
         // An agent step may ask to park the run (e.g. the SDK paused on tool
-        // approvals) instead of completing.
+        // approvals) instead of completing. The pause follows a completed,
+        // billed provider call, so its usage is recorded on the parked row.
         if ($result->interrupt !== null) {
-            app(Interrupter::class)->interrupt($run, $step, $stepRow, $result->state, $result->interrupt);
+            app(Interrupter::class)->interrupt(
+                $run, $step, $stepRow, $result->state, $result->interrupt, $result->usage, $result->calls,
+            );
 
             return;
         }
 
-        app(Progression::class)->complete($run, $definition, $step, $stepRow, $result->state, $result->usage);
+        app(Progression::class)->complete(
+            $run, $definition, $step, $stepRow, $result->state, $result->usage, calls: $result->calls,
+        );
     }
 
     protected function runAwait(
@@ -299,7 +304,9 @@ class WorkflowStepJob implements ShouldQueue
         // the evaluate step without consuming an iteration. On resume the
         // step re-runs, replays the decisions, and the loop continues.
         if ($result->interrupt !== null) {
-            app(Interrupter::class)->interrupt($run, $step, $stepRow, $result->state, $result->interrupt);
+            app(Interrupter::class)->interrupt(
+                $run, $step, $stepRow, $result->state, $result->interrupt, $result->usage, $result->calls,
+            );
 
             return;
         }
@@ -314,6 +321,7 @@ class WorkflowStepJob implements ShouldQueue
             $run, $definition, $step, $stepRow, $state, $result->usage,
             // Loop back into this same step until satisfied or out of budget.
             nextOverride: $satisfied || $iteration >= $step->maxIterations ? null : $step,
+            calls: $result->calls,
         );
     }
 

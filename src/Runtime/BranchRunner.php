@@ -9,6 +9,7 @@ use TimMcLeod\AgentWorkflows\Enums\StepStatus;
 use TimMcLeod\AgentWorkflows\Events\StepCompleted;
 use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
 use TimMcLeod\AgentWorkflows\Models\WorkflowRun;
+use TimMcLeod\AgentWorkflows\Models\WorkflowStep;
 use TimMcLeod\AgentWorkflows\ParallelStepDefinition;
 use TimMcLeod\AgentWorkflows\WorkflowRegistry;
 
@@ -121,6 +122,7 @@ class BranchRunner
             'status' => StepStatus::Completed,
             'output_state' => $result->state->all(),
             'usage' => $result->usage,
+            ...WorkflowStep::callsAudit($result->calls),
             'finished_at' => now(),
         ]);
 
