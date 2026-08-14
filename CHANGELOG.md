@@ -2,9 +2,9 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
-## Unreleased
+## v0.14.0 — 2026-08-14
 
-Run `php artisan migrate` after upgrading (one additive migration on the steps table; existing behavior tolerates a not-yet-migrated schema until it runs).
+Feature release: a per-call audit on the step audit log, a cost-accounting fix for approval pauses, and a raised `laravel/ai` floor. Run `php artisan migrate` after upgrading (one additive migration on the steps table; existing behavior tolerates a not-yet-migrated schema until it runs).
 
 **Added:**
 
