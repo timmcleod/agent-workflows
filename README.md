@@ -98,7 +98,7 @@ Each one is documented in [Defining Workflows](docs/defining-workflows.md), [Hum
 
 ## The dashboard (optional)
 
-The core package has no UI and needs none — runs, steps, and interrupts are Eloquent models, and lifecycle events cover the rest, so your own controllers, dashboards, and listeners are the interface. If you want a ready-made UI on top of that, the **optional** companion [`timmcleod/agent-workflows-ui`](https://github.com/timmcleod/agent-workflows-ui) package renders each run as a live flowchart — completed steps green, the taken branch highlighted, failed attempts and retries in the audit trail, approval forms generated from each gate's schema:
+The core package has no UI and needs none — runs, steps, and interrupts are Eloquent models, and lifecycle events cover the rest, so your own controllers, dashboards, and listeners are the interface. If you want a ready-made view on top of that, the **optional** companion [`timmcleod/agent-workflows-ui`](https://github.com/timmcleod/agent-workflows-ui) package renders each run as a live, read-only flowchart: completed steps green, the taken branch highlighted, failed attempts and retries in the audit trail, and what each parked run is waiting for, straight from each gate's schema. The dashboard observes; approving, retrying, and cancelling stay in your application through the models above:
 
 ![The dashboard: a completed run rendered as a flowchart, the taken branch highlighted and the untaken branch dimmed, with the step-attempt audit trail alongside](https://raw.githubusercontent.com/timmcleod/agent-workflows-ui/main/art/dashboard.png)
 
