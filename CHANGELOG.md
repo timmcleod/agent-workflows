@@ -2,6 +2,12 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
+## Unreleased
+
+**Changed:**
+
+- **Minimum `laravel/ai` raised from `~0.10.1` to `^0.10.3`.** The floor is deliberate, not just a widening: `laravel/ai` v0.10.2 added `AnthropicSchemaSanitizer`, which strips the JSON Schema keywords Anthropic's native structured output rejects (`minLength`, `pattern`, `minimum`, `multipleOf`, `uniqueItems`, most `format` values, and more) and folds each into the schema node's description so the model still honors the intent. Without it, a structured agent step (or a `debate()` judge, which must implement `HasStructuredOutput`) fails outright on Anthropic whenever its schema carries one of those keywords. Consumers resolving to 0.10.1 were exposed to that; the raised floor closes it. No package code changes: the suite and PHPStan pass unchanged against v0.10.3.
+
 ## v0.13.0 — 2026-08-10
 
 Feature release extracted from a real chat-assistant integration: singleton keys, run groups, step labels and progress, app-owned run metadata, and a parallel-testing fix. Run `php artisan migrate` after upgrading (one additive migration on the runs table; existing behavior tolerates a not-yet-migrated schema until it runs).

@@ -108,7 +108,7 @@ composer require timmcleod/agent-workflows-ui
 
 ## Installation
 
-Requires PHP 8.3+, Laravel 12 or 13, and `laravel/ai` ^0.10.
+Requires PHP 8.3+, Laravel 12 or 13, and `laravel/ai` ^0.10.3.
 
 ```bash
 composer require timmcleod/agent-workflows

@@ -17,7 +17,7 @@ This guide builds a small, real feature end to end: when a support ticket arrive
 
 ## Installation
 
-The package requires PHP 8.3+, Laravel 12 or 13, and `laravel/ai` ^0.10. Install it via Composer, then publish the configuration file and run the migrations:
+The package requires PHP 8.3+, Laravel 12 or 13, and `laravel/ai` ^0.10.3. Install it via Composer, then publish the configuration file and run the migrations:
 
 ```bash
 composer require timmcleod/agent-workflows
