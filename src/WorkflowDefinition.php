@@ -4,6 +4,7 @@ namespace TimMcLeod\AgentWorkflows;
 
 use Carbon\CarbonInterval;
 use Closure;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasStructuredOutput;
@@ -20,10 +21,15 @@ class WorkflowDefinition
 
     /**
      * @param  class-string<WorkflowState>  $stateClass
+     * @param  Closure(string): ?Closure  $promptResolver  given a conventional
+     *                                                     method name, returns a prompt closure or null;
+     *                                                     supplied by Workflow::definition() so protected
+     *                                                     prompt methods bind from inside their own class
      */
     public function __construct(
         public readonly string $name,
         public readonly string $stateClass = WorkflowState::class,
+        protected readonly ?Closure $promptResolver = null,
     ) {
         if (! is_a($stateClass, WorkflowState::class, true)) {
             throw new InvalidArgumentException(
@@ -47,16 +53,16 @@ class WorkflowDefinition
      * steps; any other invokable class becomes a callback step. Steps run
      * in the order they are added.
      *
-     * Agent steps take their prompt from $prompt (a closure receiving the
-     * workflow state, or a plain string); without one, the state's "prompt"
-     * key is used.
+     * Agent steps resolve their prompt in order: $prompt (a plain string,
+     * or a closure receiving the workflow state), then a workflow-class
+     * method named {camel(stepId)}Prompt, then the state's "prompt" key.
      *
      * @param  class-string  $target
      * @param  Closure(WorkflowState): string|string|null  $prompt
      */
-    public function step(string $target, ?string $as = null, Closure|string|null $prompt = null, ?string $label = null): static
+    public function step(string $target, Closure|string|null $prompt = null, ?string $as = null, ?string $label = null): static
     {
-        $this->steps[] = $this->makeStep($target, $as, $prompt, $label);
+        $this->steps[] = $this->makeStep($target, $prompt, $as, $label);
 
         return $this;
     }
@@ -82,8 +88,8 @@ class WorkflowDefinition
         Closure|string|null $elsePrompt = null,
         ?string $label = null,
     ): static {
-        $whenTrue = $this->makeStep($then, null, $thenPrompt);
-        $whenFalse = $else !== null ? $this->makeStep($else, null, $elsePrompt) : null;
+        $whenTrue = $this->makeStep($then, $thenPrompt);
+        $whenFalse = $else !== null ? $this->makeStep($else, $elsePrompt) : null;
 
         $this->steps[] = new ConditionStepDefinition(
             $this->stepId($as ?? 'when:'.(count($this->steps) + 1), explicit: $as !== null),
@@ -119,7 +125,7 @@ class WorkflowDefinition
         $branches = [];
 
         foreach ($targets as $key => $target) {
-            $branches[] = $this->makeStep($target, is_string($key) ? $key : null);
+            $branches[] = $this->makeStep($target, null, is_string($key) ? $key : null);
         }
 
         $this->steps[] = new ParallelStepDefinition(
@@ -160,7 +166,9 @@ class WorkflowDefinition
         $id = $this->stepId($as ?? $target, explicit: $as !== null);
 
         // The body deliberately shares the evaluate step's id (see EvaluateStepDefinition).
-        $body = new StepDefinition($id, $this->typeFor($target), $target, $prompt);
+        $type = $this->typeFor($target);
+
+        $body = new StepDefinition($id, $type, $target, $this->resolvePrompt($prompt, $type, $id));
 
         $this->steps[] = new EvaluateStepDefinition($id, $body, $until, $maxIterations, $label);
 
@@ -481,9 +489,31 @@ class WorkflowDefinition
      * @param  class-string  $target
      * @param  Closure(WorkflowState): string|string|null  $prompt
      */
-    protected function makeStep(string $target, ?string $as = null, Closure|string|null $prompt = null, ?string $label = null): StepDefinition
+    protected function makeStep(string $target, Closure|string|null $prompt = null, ?string $as = null, ?string $label = null): StepDefinition
     {
-        return new StepDefinition($this->stepId($as ?? $target, explicit: $as !== null), $this->typeFor($target), $target, $prompt, $label);
+        $id = $this->stepId($as ?? $target, explicit: $as !== null);
+        $type = $this->typeFor($target);
+
+        return new StepDefinition($id, $type, $target, $this->resolvePrompt($prompt, $type, $id), $label);
+    }
+
+    /**
+     * The definition-time rungs of the prompt ladder: an explicit prompt
+     * wins; otherwise an agent step binds the workflow class's conventional
+     * {camel(stepId)}Prompt method when one exists. Ids that cannot be
+     * method names (when:3, TransformStep:2) simply never match. The
+     * remaining rungs (the state's "prompt" key, then failure) live in the
+     * executor, which only ever sees the compiled StepDefinition.
+     *
+     * @param  Closure(WorkflowState): string|string|null  $prompt
+     */
+    protected function resolvePrompt(Closure|string|null $prompt, StepType $type, string $id): Closure|string|null
+    {
+        if ($prompt !== null || $type !== StepType::Agent || $this->promptResolver === null) {
+            return $prompt;
+        }
+
+        return ($this->promptResolver)(Str::camel($id).'Prompt');
     }
 
     /**

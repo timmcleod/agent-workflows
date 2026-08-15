@@ -17,7 +17,7 @@ class {{ class }} extends Workflow
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow;
-        // ->step(\App\Agents\YourAgent::class, prompt: fn ($state) => '...')
+        // ->step(\App\Agents\YourAgent::class, 'Your prompt for the agent.')
         // ->awaitHuman(reason: 'Sign-off required')
         // ->step(\App\Workflows\YourCallbackStep::class);
     }

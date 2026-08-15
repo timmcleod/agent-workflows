@@ -2,19 +2,21 @@
 
 namespace TimMcLeod\AgentWorkflows\Steps;
 
-use Closure;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Support\Str;
 use Laravel\Ai\Contracts\Agent;
 use TimMcLeod\AgentWorkflows\Enums\InterruptType;
-use TimMcLeod\AgentWorkflows\Exceptions\MissingWorkflowPromptException;
 use TimMcLeod\AgentWorkflows\Interrupts\PendingInterrupt;
 use TimMcLeod\AgentWorkflows\StepDefinition;
 use TimMcLeod\AgentWorkflows\Support\AgentAdapter;
 use TimMcLeod\AgentWorkflows\Support\AgentStepResult;
+use TimMcLeod\AgentWorkflows\Support\ResolvesPrompts;
 use TimMcLeod\AgentWorkflows\WorkflowState;
 
 class AgentStepExecutor implements StepExecutor
 {
+    use ResolvesPrompts;
+
     public function __construct(
         protected Container $container,
         protected AgentAdapter $adapter,
@@ -38,7 +40,7 @@ class AgentStepExecutor implements StepExecutor
 
             $state->forget($key.'.approval_decisions');
         } else {
-            $result = $this->adapter->prompt($agent, $this->promptFor($agent, $step, $state));
+            $result = $this->adapter->prompt($agent, $this->promptFor($step, $state));
         }
 
         // The SDK paused on tool approvals — surface it as a workflow
@@ -71,21 +73,14 @@ class AgentStepExecutor implements StepExecutor
         return "Agent step [{$step->id}] is awaiting approval for: {$tools}";
     }
 
-    protected function promptFor(Agent $agent, StepDefinition $step, WorkflowState $state): string
+    protected function promptFor(StepDefinition $step, WorkflowState $state): string
     {
-        $prompt = match (true) {
-            $step->prompt instanceof Closure => ($step->prompt)($state),
-            is_string($step->prompt) => $step->prompt,
-            default => $state->get('prompt'),
-        };
-
-        if (! is_string($prompt) || $prompt === '') {
-            throw new MissingWorkflowPromptException(
-                "Agent step [{$step->id}] needs a prompt: pass prompt: when defining the step, ".
-                'or provide a string under the state\'s "prompt" key.'
-            );
-        }
-
-        return $prompt;
+        return $this->resolvePromptSource(
+            $step->prompt,
+            $state,
+            "Agent step [{$step->id}] needs a prompt: pass prompt: when defining the step, ".
+            'define a '.Str::camel($step->id).'Prompt() method on the workflow class, '.
+            'or provide a string under the state\'s "prompt" key.'
+        );
     }
 }

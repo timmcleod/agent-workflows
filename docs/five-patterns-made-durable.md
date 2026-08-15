@@ -15,12 +15,9 @@ This page rewrites each official example with checkpoints, retry, and resume. Sa
 ```php
 // In ContentPipeline::build():
 return $workflow
-    ->step(OutlineAgent::class,
-        prompt: fn ($s) => 'Outline an article about: '.$s->get('brief'))
-    ->step(DraftAgent::class,
-        prompt: fn ($s) => 'Write the article: '.$s->get('steps.OutlineAgent.text'))
-    ->step(PolishAgent::class,
-        prompt: fn ($s) => 'Polish this draft: '.$s->get('steps.DraftAgent.text'));
+    ->step(OutlineAgent::class, fn ($s) => 'Outline an article about: '.$s->get('brief'))
+    ->step(DraftAgent::class, fn ($s) => 'Write the article: '.$s->get('steps.OutlineAgent.text'))
+    ->step(PolishAgent::class, fn ($s) => 'Polish this draft: '.$s->get('steps.DraftAgent.text'));
 
 $run = ContentPipeline::start(['brief' => $brief]);
 ```

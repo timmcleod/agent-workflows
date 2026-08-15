@@ -103,19 +103,14 @@ class TicketReply extends Workflow
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->step(DraftReplyAgent::class, prompt: $this->draftPrompt(...))
+            ->step(DraftReplyAgent::class, 'Draft a friendly, concise reply to the customer ticket.')
             ->awaitHuman(reason: 'Review the drafted reply', schema: ['final_reply' => 'required|string'])
             ->step(SendReply::class);
-    }
-
-    protected function draftPrompt(WorkflowState $state): string
-    {
-        return 'Draft a reply to this ticket: '.$state->get('ticket_message');
     }
 }
 ```
 
-The `build` method stays a skimmable table of contents: each agent's prompt is a named method receiving the workflow state, so the same agent may be asked different things in different workflows. Inline closures and plain strings work as well — see [agent steps](agent-steps.md).
+The prompt is the step's second argument. A plain string is the simplest form; to thread run input or an earlier step's output into the prompt, pass a closure receiving the workflow state instead: `fn (WorkflowState $state) => 'Draft a reply to: '.$state->get('ticket_message')`. When prompts grow long, they can also live as named methods on the workflow class, bound by convention; see [agent steps](agent-steps.md#prompts) for all the forms.
 
 ## Registering the Workflow
 

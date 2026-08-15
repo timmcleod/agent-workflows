@@ -43,7 +43,16 @@ abstract class Workflow
 
     public function definition(): WorkflowDefinition
     {
-        return $this->build(new WorkflowDefinition($this->name(), $this->stateClass()));
+        return $this->build(new WorkflowDefinition(
+            $this->name(),
+            $this->stateClass(),
+            // Agent steps defined without a prompt bind a conventional
+            // {camel(stepId)}Prompt method from this class when one exists.
+            // Created here, inside the class, so protected methods bind.
+            // Prompt methods should be pure functions of the state they
+            // receive: the bound instance lives for the worker process.
+            promptResolver: fn (string $method) => method_exists($this, $method) ? $this->{$method}(...) : null,
+        ));
     }
 
     /**

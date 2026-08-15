@@ -38,8 +38,8 @@ class ContractReview extends Workflow
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->step(ExtractClausesAgent::class, prompt: $this->extractPrompt(...))
-            ->step(RiskAnalysisAgent::class, prompt: $this->riskPrompt(...))
+            ->step(ExtractClausesAgent::class, 'Extract the key clauses from the contract.')
+            ->step(RiskAnalysisAgent::class, 'Assess the risk of the extracted clauses.')
             ->awaitHuman(reason: 'Final sign-off required');
     }
 }
@@ -79,7 +79,7 @@ return $workflow
     ->step(LogResolution::class);
 ```
 
-Agent steps take an optional `prompt` argument — a string, a closure over the state, or a first-class callable — covered in [Agent Steps](agent-steps.md#prompts).
+Agent steps resolve their prompt through a ladder: an optional `prompt` as the second argument (a string or a closure over the state), then a workflow-class method named `{camelStepId}Prompt`, then the state's `prompt` key. Covered in [Agent Steps](agent-steps.md#prompts).
 
 Step targets must be real classes — a typo'd class string throws at definition time rather than becoming a callback step that explodes inside a queue worker.
 
@@ -121,6 +121,9 @@ Every step gets an id, used in state paths (`steps.{id}`), audit rows, and `outp
 
 An explicit alias that collides with an existing id throws — silently renaming it would point audit rows, state paths, and `output()` lookups at the wrong step.
 
+> [!WARNING]
+> [Conventional prompt methods](agent-steps.md#prompts) bind by step id, so renaming an alias also changes which `{camelStepId}Prompt` method binds. Treat an alias rename as a behavior change, not a cosmetic one.
+
 > [!NOTE]
 > Structural steps without an `as` get positional default ids (`when:2`, `parallel:3`, `await-human:4`). Inserting an earlier step renumbers them — which moves state paths and changes the [definition hash](#definition-drift). For long-lived workflows, prefer explicit aliases on structural steps.
 
@@ -137,7 +140,7 @@ return $workflow
     ->step(LogResolution::class);
 ```
 
-Agent branch targets take their prompts from the `thenPrompt` and `elsePrompt` arguments.
+Agent branch targets take their prompts from the `thenPrompt` and `elsePrompt` arguments, or bind a [conventional prompt method](agent-steps.md#prompts) by their own step id when neither is given.
 
 The condition is evaluated against checkpointed state, and the decision is recorded for audit: the condition step checkpoints `steps.{id}.branch` with the chosen branch's step id — or `'skipped'` when a false condition had no `else` — and gets its own audit row like any other step. A condition closure that throws fails the run at the condition step, retryable like any other failure.
 

@@ -124,10 +124,8 @@ class ContractReview extends Workflow
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->step(ExtractClausesAgent::class,
-                prompt: fn (ContractReviewState $state) => "Extract the key clauses:\n\n".$state->contract())
-            ->step(RiskAnalysisAgent::class,
-                prompt: fn (ContractReviewState $state) => "Assess the risk of:\n\n".$state->clauses())
+            ->step(ExtractClausesAgent::class, fn (ContractReviewState $state) => "Extract the key clauses:\n\n".$state->contract())
+            ->step(RiskAnalysisAgent::class, fn (ContractReviewState $state) => "Assess the risk of:\n\n".$state->clauses())
             ->when(fn (ContractReviewState $state) => $state->isHighRisk(),
                 then: EscalationAgent::class,
                 else: AutoApproveStep::class)

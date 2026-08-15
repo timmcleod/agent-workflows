@@ -21,20 +21,20 @@ Already know the multi-agent space? This package deliberately adopts the vocabul
 ## What it looks like
 
 ```php
-// app/AgentWorkflows/ContractReview.php — prompt methods omitted
+// app/AgentWorkflows/ContractReview.php
 class ContractReview extends Workflow
 {
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->step(ExtractClausesAgent::class, prompt: $this->extractPrompt(...))
-            ->step(RiskAnalysisAgent::class, prompt: $this->riskPrompt(...))
+            ->step(ExtractClausesAgent::class, 'Extract the key clauses from the contract.')
+            ->step(RiskAnalysisAgent::class, 'Assess the risk of each extracted clause.')
             ->when(fn (WorkflowState $state) => $state->output(RiskAnalysisAgent::class)?->structured('riskScore') >= 7,
                 then: EscalationAgent::class,
-                thenPrompt: $this->escalationPrompt(...))
+                thenPrompt: 'Draft an escalation memo covering the highest-risk clauses.')
             ->awaitHuman(reason: 'Final sign-off required',
                 schema: ['approved' => 'required|boolean', 'notes' => 'nullable|string'])
-            ->step(GenerateSummaryAgent::class, prompt: $this->summaryPrompt(...));
+            ->step(GenerateSummaryAgent::class, 'Summarize the review and the sign-off decision for the record.');
     }
 }
 ```

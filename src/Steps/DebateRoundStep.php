@@ -2,14 +2,13 @@
 
 namespace TimMcLeod\AgentWorkflows\Steps;
 
-use Closure;
 use Illuminate\Contracts\Container\Container;
 use Laravel\Ai\Contracts\Agent;
 use TimMcLeod\AgentWorkflows\DebateRoundDefinition;
-use TimMcLeod\AgentWorkflows\Exceptions\MissingWorkflowPromptException;
 use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
 use TimMcLeod\AgentWorkflows\Support\AgentAdapter;
 use TimMcLeod\AgentWorkflows\Support\AgentStepResult;
+use TimMcLeod\AgentWorkflows\Support\ResolvesPrompts;
 use TimMcLeod\AgentWorkflows\Support\Transcript;
 use TimMcLeod\AgentWorkflows\WorkflowState;
 
@@ -21,6 +20,8 @@ use TimMcLeod\AgentWorkflows\WorkflowState;
  */
 class DebateRoundStep
 {
+    use ResolvesPrompts;
+
     /**
      * Bump whenever any shipped protocol prompt below changes. The version
      * is part of the debate fingerprint, so strict drift mode refuses to
@@ -147,19 +148,11 @@ class DebateRoundStep
 
     protected function topic(DebateRoundDefinition $step, WorkflowState $state): string
     {
-        $topic = match (true) {
-            $step->topic instanceof Closure => ($step->topic)($state),
-            is_string($step->topic) => $step->topic,
-            default => $state->get('prompt'),
-        };
-
-        if (! is_string($topic) || $topic === '') {
-            throw new MissingWorkflowPromptException(
-                "Debate step [{$step->id}] needs a topic: pass topic: when defining the step, ".
-                'or provide a string under the state\'s "prompt" key.'
-            );
-        }
-
-        return $topic;
+        return $this->resolvePromptSource(
+            $step->topic,
+            $state,
+            "Debate step [{$step->id}] needs a topic: pass topic: when defining the step, ".
+            'or provide a string under the state\'s "prompt" key.'
+        );
     }
 }

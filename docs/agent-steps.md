@@ -15,38 +15,54 @@ Any `laravel/ai` agent may be used as a workflow step. Agents remain plain SDK c
 ```php
 // In ContractReview::build():
 return $workflow
-    ->step(ExtractClausesAgent::class,
-        prompt: fn (WorkflowState $state) => 'Extract the key clauses: '.$state->get('document.text'))
-    ->step(RiskAnalysisAgent::class,
-        prompt: fn (WorkflowState $state) => 'Assess the risk of: '.$state->get('steps.ExtractClausesAgent.text'));
+    ->step(ExtractClausesAgent::class, fn (WorkflowState $state) => 'Extract the key clauses: '.$state->get('document.text'))
+    ->step(RiskAnalysisAgent::class, fn (WorkflowState $state) => 'Assess the risk of: '.$state->get('steps.ExtractClausesAgent.text'));
 ```
 
 Because prompts are defined on the step rather than the agent, the same agent may be asked different things in different workflows.
 
 ## Prompts
 
-At its simplest, a step's prompt is a plain string:
+An agent step resolves its prompt through a ladder; the first rung that produces a string wins.
+
+**A string or closure on the step.** The prompt is the step's second argument. At its simplest, it is a plain string:
 
 ```php
-->step(SummarizeAgent::class, prompt: 'Summarize the standard weekly report.')
+->step(SummarizeAgent::class, 'Summarize the standard weekly report.')
 ```
 
 Most prompts need the run's data, so a prompt may also be a closure that receives the workflow's current state:
 
 ```php
-->step(RiskAnalysisAgent::class,
-    prompt: fn (WorkflowState $state) => 'Assess the risk of: '.$state->get('steps.ExtractClausesAgent.text'))
+->step(RiskAnalysisAgent::class, fn (WorkflowState $state) => 'Assess the risk of: '.$state->get('steps.ExtractClausesAgent.text'))
 ```
 
-When prompts grow long, a first-class callable referencing a method on your workflow class keeps your `build` method skimmable:
+The named form `prompt:` works everywhere the positional form does, and is how a prompt combines with other named arguments:
 
 ```php
-->step(RiskAnalysisAgent::class, prompt: $this->riskPrompt(...))
+->step(RiskAnalysisAgent::class, prompt: 'Assess the risk.', as: 'risk')
 ```
 
-If a step does not define a prompt, the agent will be prompted with the value of the state's `prompt` key. This is convenient for chat-shaped workflows where the run's input is the prompt. If no prompt can be resolved from the step or the state, the step fails with a `MissingWorkflowPromptException`.
+**Optionally, a conventional prompt method.** When a step defines no prompt, the workflow class is checked for a method named `{camelStepId}Prompt`, which receives the state and returns the prompt. Entirely opt-in: nothing changes for workflows that pass prompts on their steps. It earns its keep when prompts grow long, keeping `build` a skimmable table of contents while the prose lives below it:
 
-Agent targets in other step types accept prompts as well: the `when` method accepts `thenPrompt` and `elsePrompt` arguments for its branches, and the `evaluate` method accepts a `prompt` argument for its loop body.
+```php
+return $workflow->step(RiskAnalysisAgent::class);
+
+// Bound automatically: camel of the step id "RiskAnalysisAgent" + "Prompt".
+protected function riskAnalysisAgentPrompt(WorkflowState $state): string
+{
+    return 'Assess the risk of: '.$state->output(ExtractClausesAgent::class)?->text();
+}
+```
+
+An aliased step looks for its alias: `->step(RiskAnalysisAgent::class, as: 'risk')` binds `riskPrompt()`. Prompt methods should be pure functions of the state they receive. An explicit `prompt:` always wins over a matching method, and ids that cannot be method names (`when:3`, a deduped `SummarizeAgent:2`) simply never match.
+
+> [!WARNING]
+> Because the method is found by step id, renaming a step's `as:` alias also changes which prompt method binds: a behavior change, not just a cosmetic one. Adding a conventional method to a previously promptless step changes the definition hash, so in-flight runs notice under strict [definition drift](defining-workflows.md#definition-drift), exactly as adding an explicit prompt would.
+
+**The state's `prompt` key.** If neither the step nor the workflow class provides a prompt, the agent is prompted with the value of the state's `prompt` key. This is convenient for chat-shaped workflows where the run's input is the prompt. If no prompt can be resolved at all, the step fails with a `MissingWorkflowPromptException`.
+
+Agent targets in other step types resolve prompts the same way: the `when` method accepts `thenPrompt` and `elsePrompt` arguments for its branches, the `evaluate` method accepts a `prompt` argument for its loop body, and both fall through to the conventional method for their step's id, which is also the only way to give a `parallel` branch its own prompt.
 
 Steps also accept an optional `label` for live progress displays — see [defining workflows](defining-workflows.md#steps) and [`$run->progress()`](runs-and-observability.md#run-progress).
 

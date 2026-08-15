@@ -5,6 +5,8 @@ use TimMcLeod\AgentWorkflows\Exceptions\WorkflowException;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Agents\SummarizeAgent;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\TransformStep;
+use TimMcLeod\AgentWorkflows\Tests\Fixtures\Workflows\ConventionalPromptWorkflow;
+use TimMcLeod\AgentWorkflows\Workflow;
 use TimMcLeod\AgentWorkflows\WorkflowDefinition;
 
 it('classifies agent classes and invokables into step types', function () {
@@ -50,10 +52,131 @@ it('excludes labels from the definition hash', function () {
 });
 
 it('includes string prompts in the definition hash', function () {
-    $one = (new WorkflowDefinition('p'))->step(SummarizeAgent::class, prompt: 'Summarize A.');
-    $changed = (new WorkflowDefinition('p'))->step(SummarizeAgent::class, prompt: 'Summarize B.');
+    // Positional: the prompt is step()'s second argument as of v0.15.
+    $one = (new WorkflowDefinition('p'))->step(SummarizeAgent::class, 'Summarize A.');
+    $changed = (new WorkflowDefinition('p'))->step(SummarizeAgent::class, 'Summarize B.');
 
     expect($one->hash())->not->toBe($changed->hash());
+});
+
+it('accepts the prompt as the second positional argument', function () {
+    $definition = (new WorkflowDefinition('positional'))
+        ->step(SummarizeAgent::class, 'A literal prompt.')
+        ->step(SummarizeAgent::class, fn ($state) => 'From a closure.', as: 'second');
+
+    expect($definition->findStep('SummarizeAgent')->prompt)->toBe('A literal prompt.')
+        ->and($definition->findStep('second')->prompt)->toBeInstanceOf(Closure::class);
+});
+
+it('binds conventional prompt methods and fingerprints them as closures', function () {
+    $definition = (new ConventionalPromptWorkflow)->definition();
+
+    // Bound method: a closure at runtime, the opaque closure marker in the
+    // hash, so migrating from explicit prompt: $this->x(...) wiring to the
+    // convention never changes a definition's fingerprint.
+    expect($definition->findStep('SummarizeAgent')->prompt)->toBeInstanceOf(Closure::class)
+        ->and($definition->findStep('SummarizeAgent')->fingerprint()['prompt'])->toBe('(closure)')
+        // Explicit prompts always win over a matching method.
+        ->and($definition->findStep('BullCaseAgent')->prompt)->toBe('Explicit wins.')
+        // Branch targets and parallel branches bind by their own ids.
+        ->and($definition->findStep('DeployAgent')->prompt)->toBeInstanceOf(Closure::class)
+        ->and($definition->findStep('BearCaseAgent')->prompt)->toBeInstanceOf(Closure::class);
+});
+
+it('trips strict drift when a conventional prompt method is added', function () {
+    $without = new class extends Workflow
+    {
+        public function name(): string
+        {
+            return 'drifting';
+        }
+
+        public function build(WorkflowDefinition $workflow): WorkflowDefinition
+        {
+            return $workflow->step(SummarizeAgent::class);
+        }
+    };
+
+    $with = new class extends Workflow
+    {
+        public function name(): string
+        {
+            return 'drifting';
+        }
+
+        public function build(WorkflowDefinition $workflow): WorkflowDefinition
+        {
+            return $workflow->step(SummarizeAgent::class);
+        }
+
+        protected function summarizeAgentPrompt($state): string
+        {
+            return 'Now bound.';
+        }
+    };
+
+    // Adding the method turns an absent prompt into '(closure)': a new hash,
+    // so in-flight runs notice, exactly like adding an explicit prompt would.
+    expect($without->definition()->hash())->not->toBe($with->definition()->hash());
+});
+
+it('rebinds the conventional method when a step alias changes', function () {
+    $workflow = new class extends Workflow
+    {
+        public string $alias = 'risk';
+
+        public function name(): string
+        {
+            return 'aliased';
+        }
+
+        public function build(WorkflowDefinition $workflow): WorkflowDefinition
+        {
+            return $workflow->step(SummarizeAgent::class, as: $this->alias);
+        }
+
+        protected function riskPrompt($state): string
+        {
+            return 'Assess risk.';
+        }
+    };
+
+    expect($workflow->definition()->findStep('risk')->prompt)->toBeInstanceOf(Closure::class);
+
+    // Renaming the alias silently unbinds the method: a rename is now a
+    // behavior change, not just an id change.
+    $workflow->alias = 'risky';
+
+    expect($workflow->definition()->findStep('risky')->prompt)->toBeNull();
+});
+
+it('never matches conventional methods for ids that cannot be method names', function () {
+    $workflow = new class extends Workflow
+    {
+        public function name(): string
+        {
+            return 'colon-ids';
+        }
+
+        public function build(WorkflowDefinition $workflow): WorkflowDefinition
+        {
+            // The second derived id is SummarizeAgent:2; camel keeps the
+            // colon, so method_exists never matches and never errors.
+            return $workflow
+                ->step(SummarizeAgent::class)
+                ->step(SummarizeAgent::class);
+        }
+
+        protected function summarizeAgentPrompt($state): string
+        {
+            return 'First only.';
+        }
+    };
+
+    $definition = $workflow->definition();
+
+    expect($definition->findStep('SummarizeAgent')->prompt)->toBeInstanceOf(Closure::class)
+        ->and($definition->findStep('SummarizeAgent:2')->prompt)->toBeNull();
 });
 
 it('changes its hash when the definition changes', function () {

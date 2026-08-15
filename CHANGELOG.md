@@ -2,6 +2,20 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
+## Unreleased
+
+Prompt-ergonomics release: prompts move to the front of `step()` and can be discovered by convention. No schema changes, no migration.
+
+**Breaking (flagged per 0.x policy):**
+
+- **`step()`'s second positional parameter is now `prompt`, not `as`.** The signature is `step($target, $prompt = null, $as = null, $label = null)`. Code using named arguments (every documented example to date) is unaffected and compiles to identical definitions with identical hashes. Code passing an alias positionally (`->step(Foo::class, 'alias')`) changes meaning **silently**: the string becomes the step's prompt and the id reverts to the class basename. Audit your workflows for positional second arguments before upgrading; this repository's own suite, docs, and stub contained none.
+
+**Added:**
+
+- **Positional prompts.** The prompt is the step's second argument: `->step(SummarizeAgent::class, 'Summarize the filings.')` or `->step(DraftAgent::class, fn ($state) => ...)`. The named `prompt:` form remains.
+- **Conventional prompt methods.** An agent step defined without a prompt binds a workflow-class method named `{camelStepId}Prompt` when one exists, receiving the state and returning the prompt: `->step(RiskAnalysisAgent::class)` binds `riskAnalysisAgentPrompt()`; `as: 'risk'` binds `riskPrompt()`. The full resolution ladder is: explicit `prompt:` (always wins), conventional method, the state's `prompt` key, then `MissingWorkflowPromptException`. Applies uniformly to plain steps, `when()` branches, `evaluate()` bodies, and `parallel()` branches, which is the first way a parallel branch has ever been able to carry its own prompt. Ids that cannot be method names (`when:3`, a deduped `SummarizeAgent:2`) never match. Prompt methods may be `protected` and should be pure functions of the state they receive.
+- Drift notes: a conventional method fingerprints as `(closure)`, so migrating a step from `prompt: $this->x(...)` wiring to the convention never changes its hash. Adding a method to a previously promptless step does change the hash (a real behavior change), and renaming a step's `as:` alias changes which method binds. The [agent steps](docs/agent-steps.md#prompts) and [defining workflows](docs/defining-workflows.md#step-ids) docs cover both.
+
 ## v0.14.0 — 2026-08-14
 
 Feature release: a per-call audit on the step audit log, a cost-accounting fix for approval pauses, and a raised `laravel/ai` floor. Run `php artisan migrate` after upgrading (one additive migration on the steps table; existing behavior tolerates a not-yet-migrated schema until it runs).
