@@ -2,7 +2,7 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
-## Unreleased
+## v0.15.0 — 2026-08-15
 
 Prompt-ergonomics release: prompts move to the front of `step()`, string prompts gain `{{ placeholder }}` templates, and long prompts can be discovered by convention. No schema changes, no migration.
 
