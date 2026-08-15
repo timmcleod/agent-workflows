@@ -38,10 +38,13 @@ The resolution — payload, who resolved it, when — is recorded on the interru
 You may give the gate a response schema of Laravel validation rules. The schema is persisted on the interrupt, so your approval UI knows exactly what to collect:
 
 ```php
-->awaitHuman(reason: 'Final sign-off required', schema: [
-    'approved' => 'required|boolean',
-    'notes' => 'nullable|string',
-])
+->awaitHuman(
+    reason: 'Final sign-off required',
+    schema: [
+        'approved' => 'required|boolean',
+        'notes' => 'nullable|string',
+    ]
+)
 ```
 
 The resume payload is validated against the schema before it merges into state — a `ValidationException` leaves the run parked, and only the declared fields reach state.
@@ -51,13 +54,18 @@ The resume payload is validated against the schema before it merges into state �
 Real processes have SLAs — a run should not wait forever. You may give the gate a `timeout`, and the [scheduled sweeper](operations.md) acts on runs still waiting when it expires:
 
 ```php
-->awaitHuman(reason: 'Final sign-off required', schema: [
-    'approved' => 'required|boolean',
-    'notes' => 'nullable|string',
-], timeout: CarbonInterval::days(3), timeoutResponse: [
-    'approved' => false,
-    'notes' => 'Auto-rejected: sign-off timed out.',
-])
+->awaitHuman(
+    reason: 'Final sign-off required',
+    schema: [
+        'approved' => 'required|boolean',
+        'notes' => 'nullable|string',
+    ],
+    timeout: CarbonInterval::days(3),
+    timeoutResponse: [
+        'approved' => false,
+        'notes' => 'Auto-rejected: sign-off timed out.',
+    ]
+)
 ```
 
 The `timeout` argument accepts seconds or any `DateInterval` (`new DateInterval('P3D')`, `CarbonInterval::days(3)`). When a `timeoutResponse` is provided, the run resumes with that payload — an auto-decision, validated against the schema like any human answer. Without one, the run **fails** at the gate; calling `retry` re-arms the same wait with a fresh deadline, so "give them another three days" is one method call.

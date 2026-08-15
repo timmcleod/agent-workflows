@@ -29,7 +29,7 @@ return $workflow
         ['bull' => BullCaseAgent::class, 'bear' => BearCaseAgent::class],
         judge: VerdictAgent::class,
         as: 'thesis',
-        topic: fn (WorkflowState $state) => 'Should we acquire X? Filings: '.$state->get('filings'),
+        topic: 'Should we acquire X? Filings: {{ filings }}'
     )
     ->step(WriteMemoStep::class);
 ```
@@ -68,7 +68,7 @@ The shipped prompts are deliberately short and neutral. You may override any of 
     as: 'thesis',
     openingPrompt: fn (WorkflowState $state, Transcript $transcript, string $speaker) => "...",
     rebuttalPrompt: fn (WorkflowState $state, Transcript $transcript, string $speaker) => "...",
-    judgePrompt: fn (WorkflowState $state, Transcript $transcript) => "...",
+    judgePrompt: fn (WorkflowState $state, Transcript $transcript) => "..."
 )
 ```
 
@@ -86,7 +86,7 @@ The default predicate is `judge.consensus === true`. You may replace it with the
     as: 'thesis',
     until: fn (WorkflowState $state) => abs(
         $state->get('steps.thesis.judge.bullScore', 0) - $state->get('steps.thesis.judge.bearScore', 0)
-    ) <= 1,
+    ) <= 1
 )
 ```
 

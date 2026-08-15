@@ -27,14 +27,27 @@ class ContractReview extends Workflow
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->step(ExtractClausesAgent::class, 'Extract the key clauses: {{ contract }}')
-            ->step(RiskAnalysisAgent::class, 'Assess the risk of: {{ output:ExtractClausesAgent }}')
-            ->when(fn (WorkflowState $state) => $state->output(RiskAnalysisAgent::class)?->structured('riskScore') >= 7,
+            ->step(
+                ExtractClausesAgent::class, 
+                'Extract the key clauses: {{ contract }}'
+            )
+            ->step(
+                RiskAnalysisAgent::class, 
+                'Assess the risk of: {{ output:ExtractClausesAgent }}'
+            )
+            ->when(
+                fn (WorkflowState $state) => $state->output(RiskAnalysisAgent::class)?->structured('riskScore') >= 7,
                 then: EscalationAgent::class,
-                thenPrompt: 'Draft an escalation memo covering: {{ output:RiskAnalysisAgent }}')
-            ->awaitHuman(reason: 'Final sign-off required',
-                schema: ['approved' => 'required|boolean', 'notes' => 'nullable|string'])
-            ->step(GenerateSummaryAgent::class, 'Summarize this review for the record: {{ output:RiskAnalysisAgent }}');
+                thenPrompt: 'Draft an escalation memo covering: {{ output:RiskAnalysisAgent }}'
+            )
+            ->awaitHuman(
+                reason: 'Final sign-off required',
+                schema: ['approved' => 'required|boolean', 'notes' => 'nullable|string']
+            )
+            ->step(
+                GenerateSummaryAgent::class, 
+                'Summarize this review for the record: {{ output:RiskAnalysisAgent }}'
+            );
     }
 }
 ```
@@ -74,15 +87,21 @@ return $workflow
     ->debate(
         ['bull' => BullCaseAgent::class, 'bear' => BearCaseAgent::class],
         judge: VerdictAgent::class,
-        as: 'thesis')
+        as: 'thesis'
+    )
 
     // no consensus? dig deeper, else skip ahead
-    ->when(fn (WorkflowState $state) => ! $state->get('steps.thesis.satisfied'),
-        then: DeepDiveAgent::class)
+    ->when(
+        fn (WorkflowState $state) => ! $state->get('steps.thesis.satisfied'),
+        then: DeepDiveAgent::class
+    )
 
     // revise the memo until it is ready
-    ->evaluate(DraftMemoAgent::class, as: 'memo',
-        until: fn (WorkflowState $state) => $state->get('steps.memo.structured.score', 0) >= 8)
+    ->evaluate(
+        DraftMemoAgent::class,
+        as: 'memo',
+        until: fn (WorkflowState $state) => $state->get('steps.memo.structured.score', 0) >= 8
+    )
 
     // park for a person — hours or weeks
     ->awaitHuman(reason: 'Partner sign-off required')

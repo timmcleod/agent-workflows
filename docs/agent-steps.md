@@ -15,8 +15,14 @@ Any `laravel/ai` agent may be used as a workflow step. Agents remain plain SDK c
 ```php
 // In ContractReview::build():
 return $workflow
-    ->step(ExtractClausesAgent::class, fn (WorkflowState $state) => 'Extract the key clauses: '.$state->get('document.text'))
-    ->step(RiskAnalysisAgent::class, fn (WorkflowState $state) => 'Assess the risk of: '.$state->get('steps.ExtractClausesAgent.text'));
+    ->step(
+        ExtractClausesAgent::class,
+        'Extract the key clauses: {{ contract }}'
+    )
+    ->step(
+        RiskAnalysisAgent::class,
+        'Assess the risk of: {{ output:ExtractClausesAgent }}'
+    );
 ```
 
 Because prompts are defined on the step rather than the agent, the same agent may be asked different things in different workflows.
@@ -34,9 +40,18 @@ An agent step resolves its prompt through a ladder; the first rung that produces
 Most prompts need the run's data, so string prompts may carry `{{ placeholder }}` templates, resolved against the workflow state when the step executes:
 
 ```php
-->step(ExtractClausesAgent::class, 'Extract the key clauses: {{ contract }}')
-->step(RiskAnalysisAgent::class, 'Assess the risk of: {{ output:ExtractClausesAgent }}')
-->step(DeployAgent::class, 'The risk score is {{ output:RiskAnalysisAgent.riskScore }}. Proceed accordingly.')
+->step(
+    ExtractClausesAgent::class,
+    'Extract the key clauses: {{ contract }}'
+)
+->step(
+    RiskAnalysisAgent::class,
+    'Assess the risk of: {{ output:ExtractClausesAgent }}'
+)
+->step(
+    DeployAgent::class,
+    'The risk score is {{ output:RiskAnalysisAgent.riskScore }}. Proceed accordingly.'
+)
 ```
 
 Placeholders resolve dot paths into the state bag (`{{ contract }}`, `{{ document.title }}`, resume payloads, delivered event data), and the `output:` form addresses a prior step the way `$state->output()` does: bare `{{ output:StepId }}` is the step's text (or its whole structured output when the agent is structured), and `{{ output:StepId.path }}` reaches into the structured output. Booleans render as `true`/`false`; arrays and objects JSON-encode.
@@ -46,7 +61,10 @@ Two deliberate rules keep templates safe. An unresolvable placeholder **fails th
 A prompt may also be a closure receiving the state, for logic that outgrows a template:
 
 ```php
-->step(RiskAnalysisAgent::class, fn (WorkflowState $state) => 'Assess the risk of: '.$state->get('steps.ExtractClausesAgent.text'))
+->step(
+    RiskAnalysisAgent::class,
+    fn (WorkflowState $state) => 'Assess the risk of: '.$state->get('steps.ExtractClausesAgent.text')
+)
 ```
 
 Note the trade: string templates hash verbatim into the [definition fingerprint](defining-workflows.md#definition-drift), so editing one is drift-visible; closures hash as an opaque `(closure)`.
@@ -54,7 +72,11 @@ Note the trade: string templates hash verbatim into the [definition fingerprint]
 The named form `prompt:` works everywhere the positional form does, and is how a prompt combines with other named arguments:
 
 ```php
-->step(RiskAnalysisAgent::class, prompt: 'Assess the risk.', as: 'risk')
+->step(
+    RiskAnalysisAgent::class,
+    prompt: 'Assess the risk.',
+    as: 'risk'
+)
 ```
 
 **Optionally, a conventional prompt method.** When a step defines no prompt, the workflow class is checked for a method named `{camelStepId}Prompt`, which receives the state and returns the prompt. Entirely opt-in: nothing changes for workflows that pass prompts on their steps. It earns its keep when prompts grow long, keeping `build` a skimmable table of contents while the prose lives below it:

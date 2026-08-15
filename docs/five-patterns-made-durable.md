@@ -15,9 +15,18 @@ This page rewrites each official example with checkpoints, retry, and resume. Sa
 ```php
 // In ContentPipeline::build():
 return $workflow
-    ->step(OutlineAgent::class, 'Outline an article about: {{ brief }}')
-    ->step(DraftAgent::class, 'Write the article: {{ output:OutlineAgent }}')
-    ->step(PolishAgent::class, 'Polish this draft: {{ output:DraftAgent }}');
+    ->step(
+        OutlineAgent::class,
+        'Outline an article about: {{ brief }}'
+    )
+    ->step(
+        DraftAgent::class,
+        'Write the article: {{ output:OutlineAgent }}'
+    )
+    ->step(
+        PolishAgent::class,
+        'Polish this draft: {{ output:DraftAgent }}'
+    );
 
 $run = ContentPipeline::start(['brief' => $brief]);
 ```
@@ -43,9 +52,11 @@ The run's audit log (`$run->steps`) records every attempt of every step: input-s
 // In SupportTriage::build():
 return $workflow
     ->step(ClassifyTicketAgent::class)
-    ->when(fn (WorkflowState $s) => $s->get('steps.ClassifyTicketAgent.structured.urgent'),
+    ->when(
+        fn (WorkflowState $s) => $s->get('steps.ClassifyTicketAgent.structured.urgent'),
         then: EscalationAgent::class,
-        else: AutoReplyAgent::class)
+        else: AutoReplyAgent::class
+    )
     ->step(LogResolution::class);
 ```
 
@@ -78,7 +89,7 @@ Two things to know about the default merge: agent checkpoints (`steps.*`) merge 
     [BullCaseAgent::class, BearCaseAgent::class],
     merge: fn (array $branches, array $input) => array_merge($input, [
         'thesis' => $branches['BullCaseAgent']['thesis'].' vs '.$branches['BearCaseAgent']['thesis'],
-    ]),
+    ])
 )
 ```
 
@@ -102,11 +113,14 @@ The same act-when-everything-finishes semantics exist one level up, across whole
 // In AdCopy::build():
 return $workflow
     ->step(BriefAgent::class)
-    ->evaluate(ReviseCopyAgent::class, as: 'revise',
+    ->evaluate(
+        ReviseCopyAgent::class,
+        as: 'revise',
         prompt: fn (WorkflowState $s) => 'Improve this copy and score your result 1-10: '
             .($s->get('steps.revise.structured.copy') ?? $s->get('steps.BriefAgent.text')),
         until: fn (WorkflowState $s) => $s->get('steps.revise.structured.score', 0) >= 8,
-        maxIterations: 5)
+        maxIterations: 5
+    )
     ->step(PublishCopy::class);
 ```
 
@@ -125,7 +139,7 @@ return $workflow
         judge: VerdictAgent::class,
         as: 'thesis',
         rounds: 4,
-        topic: fn (WorkflowState $s) => 'Should we acquire X? Filings: '.$s->get('filings'),
+        topic: 'Should we acquire X? Filings: {{ filings }}'
     )
     ->step(WriteMemoStep::class);
 ```
@@ -141,10 +155,10 @@ None of the official examples can pause. Durability makes waiting a first-class 
 return $workflow
     ->step(ExtractClausesAgent::class)
     ->step(RiskAnalysisAgent::class)
-    ->awaitHuman(reason: 'Final sign-off required', schema: [
-        'approved' => 'required|boolean',
-        'notes' => 'nullable|string',
-    ])
+    ->awaitHuman(
+        reason: 'Final sign-off required',
+        schema: ['approved' => 'required|boolean', 'notes' => 'nullable|string']
+    )
     ->step(GenerateSummaryAgent::class);
 ```
 

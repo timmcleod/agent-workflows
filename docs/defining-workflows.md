@@ -38,8 +38,14 @@ class ContractReview extends Workflow
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->step(ExtractClausesAgent::class, 'Extract the key clauses: {{ contract }}')
-            ->step(RiskAnalysisAgent::class, 'Assess the risk of: {{ output:ExtractClausesAgent }}')
+            ->step(
+                ExtractClausesAgent::class,
+                'Extract the key clauses: {{ contract }}'
+            )
+            ->step(
+                RiskAnalysisAgent::class,
+                'Assess the risk of: {{ output:ExtractClausesAgent }}'
+            )
             ->awaitHuman(reason: 'Final sign-off required');
     }
 }
@@ -134,9 +140,11 @@ The `when` method branches at runtime. When the condition holds, the `then` step
 ```php
 return $workflow
     ->step(ClassifyTicketAgent::class)
-    ->when(fn (WorkflowState $state) => $state->output(ClassifyTicketAgent::class)?->structured('urgent'),
+    ->when(
+        fn (WorkflowState $state) => $state->output(ClassifyTicketAgent::class)?->structured('urgent'),
         then: EscalationAgent::class,
-        else: AutoReplyAgent::class)
+        else: AutoReplyAgent::class
+    )
     ->step(LogResolution::class);
 ```
 
@@ -180,7 +188,7 @@ For deletions, or your own conflict policy, provide a `merge` closure — it rec
     [BullCaseAgent::class, BearCaseAgent::class],
     merge: fn (array $branches, array $input) => array_merge($input, [
         'thesis' => $branches['BullCaseAgent']['thesis'].' vs '.$branches['BearCaseAgent']['thesis'],
-    ]),
+    ])
 )
 ```
 
@@ -191,11 +199,16 @@ The `evaluate` method runs a target repeatedly until a predicate holds or a cap 
 ```php
 return $workflow
     ->step(BriefAgent::class)
-    ->evaluate(ReviseCopyAgent::class, as: 'revise',
+    ->evaluate(
+        ReviseCopyAgent::class,
+        as: 'revise',
+        // A closure, not a template: the first iteration falls back to the
+        // brief, and an unresolved {{ placeholder }} would fail the step.
         prompt: fn (WorkflowState $state) => 'Improve this copy and score your result 1-10: '
             .($state->get('steps.revise.structured.copy') ?? $state->get('steps.BriefAgent.text')),
         until: fn (WorkflowState $state) => $state->get('steps.revise.structured.score', 0) >= 8,
-        maxIterations: 5)
+        maxIterations: 5
+    )
     ->step(PublishCopy::class);
 ```
 

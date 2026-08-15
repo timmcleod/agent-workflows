@@ -103,8 +103,14 @@ class TicketReply extends Workflow
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->step(DraftReplyAgent::class, 'Draft a friendly, concise reply to this ticket: {{ ticket_message }}')
-            ->awaitHuman(reason: 'Review the drafted reply', schema: ['final_reply' => 'required|string'])
+            ->step(
+                DraftReplyAgent::class,
+                'Draft a friendly, concise reply to this ticket: {{ ticket_message }}'
+            )
+            ->awaitHuman(
+                reason: 'Review the drafted reply',
+                schema: ['final_reply' => 'required|string']
+            )
             ->step(SendReply::class);
     }
 }
