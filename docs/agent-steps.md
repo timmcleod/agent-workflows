@@ -98,7 +98,7 @@ An aliased step looks for its alias: `->step(RiskAnalysisAgent::class, as: 'risk
 
 **The state's `prompt` key.** If neither the step nor the workflow class provides a prompt, the agent is prompted with the value of the state's `prompt` key. This is convenient for chat-shaped workflows where the run's input is the prompt. If no prompt can be resolved at all, the step fails with a `MissingWorkflowPromptException`.
 
-Agent targets in other step types resolve prompts the same way: the `when` method accepts `thenPrompt` and `elsePrompt` arguments for its branches, the `evaluate` method accepts a `prompt` argument for its loop body, and both fall through to the conventional method for their step's id, which is also the only way to give a `parallel` branch its own prompt.
+Agent targets in other step types resolve prompts the same way: the `when` method accepts `thenPrompt` and `elsePrompt` arguments for its branches, the `evaluate` method accepts a `prompt` argument for its loop body, and `parallel` branches take theirs from a `[class, prompt]` pair. All of them fall through to the conventional method for their step's id, then the state's `prompt` key.
 
 Steps also accept an optional `label` for live progress displays — see [defining workflows](defining-workflows.md#steps) and [`$run->progress()`](runs-and-observability.md#run-progress).
 

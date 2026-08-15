@@ -144,7 +144,7 @@ Want to see it run first? The **[demo app](https://github.com/timmcleod/agent-wo
 | --- | --- | --- |
 | `step()` | Chain agents and plain PHP classes; every arrow in the chain is a checkpoint. | [Defining Workflows](docs/defining-workflows.md#steps) |
 | `when()` | Branch on checkpointed state; the decision is recorded for audit. | [Defining Workflows](docs/defining-workflows.md#conditions) |
-| `parallel()` | Durable fan-out as a queued `Bus::batch`, merged when all branches finish. | [Defining Workflows](docs/defining-workflows.md#parallel-steps) |
+| `parallel()` | Durable fan-out as a queued `Bus::batch`, merged when all branches finish; branches carry their own prompts. | [Defining Workflows](docs/defining-workflows.md#parallel-steps) |
 | `evaluate()` | Loop a step until a predicate passes, checkpointing every iteration, capped. | [Defining Workflows](docs/defining-workflows.md#loops) |
 | `debate()` | Agents argue in rounds; a judge rules on the transcript after each. | [Agent Debates](docs/agent-debate.md) |
 | `awaitHuman()` | Park for sign-off — hours or weeks — with validation schemas and SLA timeouts. | [Human in the Loop](docs/human-in-the-loop.md) |

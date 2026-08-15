@@ -167,7 +167,20 @@ return $workflow
     ->step(SynthesisAgent::class);
 ```
 
-String keys become branch step aliases. Two modes are available:
+A branch is a class, or a `[class, prompt]` pair. The key names the branch (string keys become step aliases), the value describes it, and the forms mix freely:
+
+```php
+->parallel([
+    FinancialAnalysisAgent::class,                             // derived id
+    'legal' => LegalAnalysisAgent::class,                      // aliased
+    [NewsAnalysisAgent::class, 'Scan the news: {{ topic }}'],  // derived id + prompt
+    'bull2' => [BullCaseAgent::class, 'Argue against it.'],    // aliased + prompt
+])
+```
+
+Pair prompts are ordinary step prompts: `{{ placeholder }}` templates interpolate, closures work, strings hash into the [definition fingerprint](#definition-drift), and a promptless branch falls through to its [conventional prompt method](agent-steps.md#prompts) and then the state's `prompt` key. The pair is positional by design; a `[class => prompt]` map is rejected with guidance, since PHP would silently collapse duplicate class keys before the definition ever saw them. Running the same class twice works through int-keyed pairs, deduping ids as usual (`SummarizeAgent`, `SummarizeAgent:2`).
+
+Two modes are available:
 
 - `batch` (default) runs branches as a queued `Bus::batch` — distributed across queue workers, durable, SQS-safe.
 - `sync` runs branches in-process via `Concurrency::run`, for when in-request behavior is genuinely what you want.

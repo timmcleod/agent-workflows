@@ -8,11 +8,14 @@ use TimMcLeod\AgentWorkflows\Facades\AgentWorkflow;
 use TimMcLeod\AgentWorkflows\ParallelStepDefinition;
 use TimMcLeod\AgentWorkflows\Runtime\StateMerger;
 use TimMcLeod\AgentWorkflows\StepDefinition;
+use TimMcLeod\AgentWorkflows\Tests\Fixtures\Agents\BullCaseAgent;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Agents\RiskAnalysisAgent;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Agents\SummarizeAgent;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\FinalizeStep;
 use TimMcLeod\AgentWorkflows\Tests\Fixtures\Steps\PrepareStep;
+use TimMcLeod\AgentWorkflows\Workflow;
 use TimMcLeod\AgentWorkflows\WorkflowDefinition;
+use TimMcLeod\AgentWorkflows\WorkflowRegistry;
 
 // The README's flagship pattern: agent branches with NO merge closure.
 // Every agent checkpoints under the shared top-level "steps" key, so the
@@ -110,4 +113,109 @@ it('honors the parallel.sync_driver override on the sync queue', function () {
     } catch (InvalidArgumentException $e) {
         expect($e->getMessage())->toContain('nonexistent-driver');
     }
+});
+
+it('gives parallel branches their own prompts through pairs', function () {
+    SummarizeAgent::fake(['Summarized.']);
+    RiskAnalysisAgent::fake([['riskScore' => 3]]);
+
+    defineWorkflow('prompted-fanout', fn (WorkflowDefinition $workflow) => $workflow
+        ->parallel([
+            [SummarizeAgent::class, 'Summarize the intake: {{ doc }}'],
+            'risk' => [RiskAnalysisAgent::class, fn ($state) => 'Assess: '.$state->get('doc')],
+        ]));
+
+    $run = AgentWorkflow::start('prompted-fanout', ['doc' => 'Q3 contract']);
+
+    expect($run->status)->toBe(RunStatus::Completed)
+        ->and($run->state['steps'])->toHaveKeys(['SummarizeAgent', 'risk']);
+
+    // Int-keyed pair: derived id, template interpolated.
+    SummarizeAgent::assertPrompted(fn ($p) => (string) $p->prompt === 'Summarize the intake: Q3 contract');
+
+    // Alias-keyed pair: aliased id, closure prompt.
+    RiskAnalysisAgent::assertPrompted(fn ($p) => (string) $p->prompt === 'Assess: Q3 contract');
+});
+
+it('runs the same agent twice in one fan-out via int-keyed pairs', function () {
+    SummarizeAgent::fake(['For.', 'Against.']);
+
+    defineWorkflow('duplicate-fanout', fn (WorkflowDefinition $workflow) => $workflow
+        ->parallel([
+            [SummarizeAgent::class, 'Argue for the deal.'],
+            [SummarizeAgent::class, 'Argue against the deal.'],
+        ]));
+
+    $run = AgentWorkflow::start('duplicate-fanout', []);
+
+    // Derived ids dedupe; no PHP array-key collision anywhere.
+    expect($run->status)->toBe(RunStatus::Completed)
+        ->and($run->state['steps'])->toHaveKeys(['SummarizeAgent', 'SummarizeAgent:2']);
+
+    SummarizeAgent::assertPrompted(fn ($p) => (string) $p->prompt === 'Argue for the deal.');
+    SummarizeAgent::assertPrompted(fn ($p) => (string) $p->prompt === 'Argue against the deal.');
+});
+
+it('lets a pair prompt beat a conventional prompt method', function () {
+    SummarizeAgent::fake(['Bull.']);
+    BullCaseAgent::fake(['Case.']);
+
+    $workflow = new class extends Workflow
+    {
+        public function name(): string
+        {
+            return 'pair-beats-method';
+        }
+
+        public function build(WorkflowDefinition $workflow): WorkflowDefinition
+        {
+            return $workflow->parallel([
+                [SummarizeAgent::class, 'Explicit pair prompt.'],
+                BullCaseAgent::class,
+            ]);
+        }
+
+        protected function summarizeAgentPrompt($state): string
+        {
+            return 'Should not be used.';
+        }
+
+        protected function bullCaseAgentPrompt($state): string
+        {
+            return 'Bound by convention.';
+        }
+    };
+
+    app(WorkflowRegistry::class)->forget('pair-beats-method');
+    AgentWorkflow::register($workflow);
+
+    $run = AgentWorkflow::start('pair-beats-method', []);
+
+    expect($run->status)->toBe(RunStatus::Completed);
+
+    SummarizeAgent::assertPrompted(fn ($p) => (string) $p->prompt === 'Explicit pair prompt.');
+    BullCaseAgent::assertPrompted(fn ($p) => (string) $p->prompt === 'Bound by convention.');
+});
+
+it('rejects branch shapes that are not a class or a pair', function () {
+    // The [class => prompt] map form: PHP silently collapses duplicate class
+    // keys, so it is refused with guidance toward the positional pair.
+    expect(fn () => (new WorkflowDefinition('bad-map'))->parallel([
+        SummarizeAgent::class => 'A prompt.',
+    ]))->toThrow(InvalidArgumentException::class, 'positional pair');
+
+    expect(fn () => (new WorkflowDefinition('bad-arity'))->parallel([
+        [SummarizeAgent::class],
+    ]))->toThrow(InvalidArgumentException::class, 'invalid parallel branch');
+
+    expect(fn () => (new WorkflowDefinition('bad-prompt'))->parallel([
+        [SummarizeAgent::class, 42],
+    ]))->toThrow(InvalidArgumentException::class, 'invalid parallel branch');
+});
+
+it('includes pair prompts in the definition hash', function () {
+    $one = (new WorkflowDefinition('ph'))->parallel([[SummarizeAgent::class, 'Prompt A.']]);
+    $changed = (new WorkflowDefinition('ph'))->parallel([[SummarizeAgent::class, 'Prompt B.']]);
+
+    expect($one->hash())->not->toBe($changed->hash());
 });

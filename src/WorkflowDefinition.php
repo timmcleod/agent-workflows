@@ -106,10 +106,20 @@ class WorkflowDefinition
      * Fan out into concurrent branches, each starting from the same state
      * snapshot, then merge the branch states and continue.
      *
+     * A branch is a class, or a [class, prompt] pair; the key names the
+     * branch (string keys become step aliases), the value describes it:
+     *
+     *     ->parallel([
+     *         FinancialAnalysisAgent::class,                      // derived id
+     *         'legal' => LegalAnalysisAgent::class,               // aliased
+     *         [NewsAnalysisAgent::class, 'Scan: {{ topic }}'],    // derived id + prompt
+     *         'bull2' => [BullCaseAgent::class, 'Argue against'], // aliased + prompt
+     *     ])
+     *
      * Modes: "batch" (default) runs branches as a queued Bus::batch — the
      * durable option; "sync" runs them in-process via Concurrency::run().
      *
-     * @param  array<int|string, class-string>  $targets  string keys become step aliases
+     * @param  array<int|string, class-string|array{0: class-string, 1: Closure|string}>  $targets
      * @param  Closure(array<string, array<string, mixed>>, array<string, mixed>): (WorkflowState|array<string, mixed>)|null  $merge
      */
     public function parallel(array $targets, ?Closure $merge = null, string $mode = 'batch', ?string $as = null, ?string $label = null): static
@@ -125,7 +135,19 @@ class WorkflowDefinition
         $branches = [];
 
         foreach ($targets as $key => $target) {
-            $branches[] = $this->makeStep($target, null, is_string($key) ? $key : null);
+            // Catch the [SomeAgent::class => 'prompt'] map form specifically:
+            // PHP silently collapses duplicate class keys, so it is refused
+            // with guidance rather than an opaque not-a-class error.
+            if (is_string($key) && is_string($target) && class_exists($key) && ! class_exists($target)) {
+                throw new InvalidArgumentException(
+                    "Workflow [{$this->name}] parallel branch [{$key}] looks like a [class => prompt] map. ".
+                    'Use a positional pair instead: [SomeAgent::class, $prompt].'
+                );
+            }
+
+            [$class, $prompt] = $this->branchTarget($target);
+
+            $branches[] = $this->makeStep($class, $prompt, is_string($key) ? $key : null);
         }
 
         $this->steps[] = new ParallelStepDefinition(
@@ -483,6 +505,31 @@ class WorkflowDefinition
         ];
 
         return hash('sha256', json_encode($fingerprint, JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * Normalize a parallel branch entry: a bare class, or a [class, prompt]
+     * pair. A positional pair rather than a [class => prompt] map, which PHP
+     * would silently collapse for duplicate classes before we ever saw it.
+     *
+     * @param  class-string|array{0: class-string, 1: Closure|string}|mixed  $target
+     * @return array{0: string, 1: Closure|string|null}
+     */
+    protected function branchTarget(mixed $target): array
+    {
+        if (is_string($target)) {
+            return [$target, null];
+        }
+
+        if (is_array($target) && array_is_list($target) && count($target) === 2
+            && is_string($target[0]) && ($target[1] instanceof Closure || is_string($target[1]))) {
+            return [$target[0], $target[1]];
+        }
+
+        throw new InvalidArgumentException(
+            "Workflow [{$this->name}] has an invalid parallel branch: pass a class-string, ".
+            'or a [SomeAgent::class, $prompt] pair (a positional pair, not a [class => prompt] map).'
+        );
     }
 
     /**

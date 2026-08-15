@@ -2,6 +2,14 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
+## Unreleased
+
+Feature release: parallel branches carry their own prompts. No schema changes, no migration, nothing breaking.
+
+**Added:**
+
+- **Per-branch prompts in `parallel()` via `[class, prompt]` pairs.** The key names the branch, the value describes it, and all forms mix freely: `FinancialAnalysisAgent::class` (derived id), `'legal' => LegalAnalysisAgent::class` (aliased), `[NewsAnalysisAgent::class, 'Scan: {{ topic }}']` (derived id plus prompt), and `'bull2' => [BullCaseAgent::class, 'Argue against it.']` (aliased plus prompt). Pair prompts are ordinary step prompts: `{{ placeholder }}` templates interpolate, closures work, string prompts hash into the definition fingerprint, and a promptless branch still falls through to its conventional prompt method and the state's `prompt` key. Int-keyed pairs also make running the same agent twice in one fan-out natural (`SummarizeAgent`, `SummarizeAgent:2`), each with its own prompt. The pair is positional by design: a `[class => prompt]` map is rejected with guidance, because PHP silently collapses duplicate class keys in array literals before any code can see them.
+
 ## v0.15.0 — 2026-08-15
 
 Prompt-ergonomics release: prompts move to the front of `step()`, string prompts gain `{{ placeholder }}` templates, and long prompts can be discovered by convention. No schema changes, no migration.
