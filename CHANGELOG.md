@@ -2,7 +2,7 @@
 
 All notable changes to `timmcleod/agent-workflows` are documented here. During 0.x, minor versions may contain breaking changes; each entry flags them.
 
-## Unreleased
+## v0.16.0 — 2026-08-15
 
 Feature release: parallel branches carry their own prompts. No schema changes, no migration, nothing breaking.
 
