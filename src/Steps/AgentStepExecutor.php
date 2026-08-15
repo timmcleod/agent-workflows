@@ -78,6 +78,7 @@ class AgentStepExecutor implements StepExecutor
         return $this->resolvePromptSource(
             $step->prompt,
             $state,
+            "Agent step [{$step->id}]",
             "Agent step [{$step->id}] needs a prompt: pass prompt: when defining the step, ".
             'define a '.Str::camel($step->id).'Prompt() method on the workflow class, '.
             'or provide a string under the state\'s "prompt" key.'

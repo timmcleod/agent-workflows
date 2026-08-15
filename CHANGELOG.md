@@ -4,7 +4,7 @@ All notable changes to `timmcleod/agent-workflows` are documented here. During 0
 
 ## Unreleased
 
-Prompt-ergonomics release: prompts move to the front of `step()` and can be discovered by convention. No schema changes, no migration.
+Prompt-ergonomics release: prompts move to the front of `step()`, string prompts gain `{{ placeholder }}` templates, and long prompts can be discovered by convention. No schema changes, no migration.
 
 **Breaking (flagged per 0.x policy):**
 
@@ -13,6 +13,7 @@ Prompt-ergonomics release: prompts move to the front of `step()` and can be disc
 **Added:**
 
 - **Positional prompts.** The prompt is the step's second argument: `->step(SummarizeAgent::class, 'Summarize the filings.')` or `->step(DraftAgent::class, fn ($state) => ...)`. The named `prompt:` form remains.
+- **`{{ placeholder }}` templates in string prompts** (and debate `topic:` strings). Placeholders resolve against the workflow state at execution: dot paths (`{{ contract }}`, `{{ document.title }}`) and an `output:` form mirroring `$state->output()` (`{{ output:StepId }}` for a prior step's text, `{{ output:StepId.path }}` into its structured output). Booleans render as `true`/`false`; arrays JSON-encode. An unresolvable placeholder fails the step loudly with a `MissingWorkflowPromptException` naming it. There is no escape syntax by design: `{{` cannot occur inside valid JSON, so prompts containing JSON examples are unaffected, and the rare prompt needing a literal `{{` should use a closure. Only definition-authored strings interpolate; closure results and the state `prompt` fallback never do. Templates hash verbatim, so chained prompts become drift-visible, unlike the closures they replace. Theoretical behavior change: an existing string prompt that already contained a `{{ identifier }}` sequence now interpolates or fails loudly.
 - **Conventional prompt methods.** An agent step defined without a prompt binds a workflow-class method named `{camelStepId}Prompt` when one exists, receiving the state and returning the prompt: `->step(RiskAnalysisAgent::class)` binds `riskAnalysisAgentPrompt()`; `as: 'risk'` binds `riskPrompt()`. The full resolution ladder is: explicit `prompt:` (always wins), conventional method, the state's `prompt` key, then `MissingWorkflowPromptException`. Applies uniformly to plain steps, `when()` branches, `evaluate()` bodies, and `parallel()` branches, which is the first way a parallel branch has ever been able to carry its own prompt. Ids that cannot be method names (`when:3`, a deduped `SummarizeAgent:2`) never match. Prompt methods may be `protected` and should be pure functions of the state they receive.
 - Drift notes: a conventional method fingerprints as `(closure)`, so migrating a step from `prompt: $this->x(...)` wiring to the convention never changes its hash. Adding a method to a previously promptless step does change the hash (a real behavior change), and renaming a step's `as:` alias changes which method binds. The [agent steps](docs/agent-steps.md#prompts) and [defining workflows](docs/defining-workflows.md#step-ids) docs cover both.
 

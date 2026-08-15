@@ -25,17 +25,31 @@ Because prompts are defined on the step rather than the agent, the same agent ma
 
 An agent step resolves its prompt through a ladder; the first rung that produces a string wins.
 
-**A string or closure on the step.** The prompt is the step's second argument. At its simplest, it is a plain string:
+**A string on the step.** The prompt is the step's second argument. At its simplest, it is a plain string:
 
 ```php
 ->step(SummarizeAgent::class, 'Summarize the standard weekly report.')
 ```
 
-Most prompts need the run's data, so a prompt may also be a closure that receives the workflow's current state:
+Most prompts need the run's data, so string prompts may carry `{{ placeholder }}` templates, resolved against the workflow state when the step executes:
+
+```php
+->step(ExtractClausesAgent::class, 'Extract the key clauses: {{ contract }}')
+->step(RiskAnalysisAgent::class, 'Assess the risk of: {{ output:ExtractClausesAgent }}')
+->step(DeployAgent::class, 'The risk score is {{ output:RiskAnalysisAgent.riskScore }}. Proceed accordingly.')
+```
+
+Placeholders resolve dot paths into the state bag (`{{ contract }}`, `{{ document.title }}`, resume payloads, delivered event data), and the `output:` form addresses a prior step the way `$state->output()` does: bare `{{ output:StepId }}` is the step's text (or its whole structured output when the agent is structured), and `{{ output:StepId.path }}` reaches into the structured output. Booleans render as `true`/`false`; arrays and objects JSON-encode.
+
+Two deliberate rules keep templates safe. An unresolvable placeholder **fails the step** with a `MissingWorkflowPromptException` naming it, rather than quietly prompting the agent with a hole. And there is **no escape syntax**: `{{` cannot occur inside valid JSON, so prompts containing JSON examples pass through untouched, and the rare prompt that needs a literal `{{` should use a closure. Only definition-authored strings are interpolated; closure results and the state `prompt` fallback never are, so runtime data can never smuggle placeholders into a prompt.
+
+A prompt may also be a closure receiving the state, for logic that outgrows a template:
 
 ```php
 ->step(RiskAnalysisAgent::class, fn (WorkflowState $state) => 'Assess the risk of: '.$state->get('steps.ExtractClausesAgent.text'))
 ```
+
+Note the trade: string templates hash verbatim into the [definition fingerprint](defining-workflows.md#definition-drift), so editing one is drift-visible; closures hash as an opaque `(closure)`.
 
 The named form `prompt:` works everywhere the positional form does, and is how a prompt combines with other named arguments:
 

@@ -27,14 +27,14 @@ class ContractReview extends Workflow
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->step(ExtractClausesAgent::class, 'Extract the key clauses from the contract.')
-            ->step(RiskAnalysisAgent::class, 'Assess the risk of each extracted clause.')
+            ->step(ExtractClausesAgent::class, 'Extract the key clauses: {{ contract }}')
+            ->step(RiskAnalysisAgent::class, 'Assess the risk of: {{ output:ExtractClausesAgent }}')
             ->when(fn (WorkflowState $state) => $state->output(RiskAnalysisAgent::class)?->structured('riskScore') >= 7,
                 then: EscalationAgent::class,
-                thenPrompt: 'Draft an escalation memo covering the highest-risk clauses.')
+                thenPrompt: 'Draft an escalation memo covering: {{ output:RiskAnalysisAgent }}')
             ->awaitHuman(reason: 'Final sign-off required',
                 schema: ['approved' => 'required|boolean', 'notes' => 'nullable|string'])
-            ->step(GenerateSummaryAgent::class, 'Summarize the review and the sign-off decision for the record.');
+            ->step(GenerateSummaryAgent::class, 'Summarize this review for the record: {{ output:RiskAnalysisAgent }}');
     }
 }
 ```

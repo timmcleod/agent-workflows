@@ -38,8 +38,8 @@ class ContractReview extends Workflow
     public function build(WorkflowDefinition $workflow): WorkflowDefinition
     {
         return $workflow
-            ->step(ExtractClausesAgent::class, 'Extract the key clauses from the contract.')
-            ->step(RiskAnalysisAgent::class, 'Assess the risk of the extracted clauses.')
+            ->step(ExtractClausesAgent::class, 'Extract the key clauses: {{ contract }}')
+            ->step(RiskAnalysisAgent::class, 'Assess the risk of: {{ output:ExtractClausesAgent }}')
             ->awaitHuman(reason: 'Final sign-off required');
     }
 }
@@ -79,7 +79,7 @@ return $workflow
     ->step(LogResolution::class);
 ```
 
-Agent steps resolve their prompt through a ladder: an optional `prompt` as the second argument (a string or a closure over the state), then a workflow-class method named `{camelStepId}Prompt`, then the state's `prompt` key. Covered in [Agent Steps](agent-steps.md#prompts).
+Agent steps resolve their prompt through a ladder: an optional `prompt` as the second argument (a string, with `{{ placeholder }}` templates resolved from the state, or a closure over the state), then a workflow-class method named `{camelStepId}Prompt`, then the state's `prompt` key. Covered in [Agent Steps](agent-steps.md#prompts).
 
 Step targets must be real classes — a typo'd class string throws at definition time rather than becoming a callback step that explodes inside a queue worker.
 

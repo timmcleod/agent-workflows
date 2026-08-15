@@ -151,6 +151,7 @@ class DebateRoundStep
         return $this->resolvePromptSource(
             $step->topic,
             $state,
+            "Debate step [{$step->id}]",
             "Debate step [{$step->id}] needs a topic: pass topic: when defining the step, ".
             'or provide a string under the state\'s "prompt" key.'
         );
