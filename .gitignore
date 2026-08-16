@@ -8,3 +8,8 @@
 /.vscode
 .phpunit.result.cache
 .DS_Store
+
+# Docs site
+/node_modules
+/docs/.vitepress/dist
+/docs/.vitepress/cache

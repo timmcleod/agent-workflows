@@ -2,7 +2,10 @@
 
 - [Introduction](#introduction)
 - [Prompts](#prompts)
-- [Retrieving Step Output](#retrieving-step-output)
+  - [Strings and Templates](#strings-and-templates)
+  - [Closures](#closures)
+  - [Conventional Prompt Methods](#conventional-prompt-methods)
+  - [The State Fallback](#the-state-fallback)
 - [Tools](#tools)
   - [Worker Timeouts](#worker-timeouts)
   - [Retries and Side Effects](#retries-and-side-effects)
@@ -10,28 +13,17 @@
 
 ## Introduction
 
-Any `laravel/ai` agent may be used as a workflow step. Agents remain plain SDK classes — no package-specific interfaces or base classes are required:
+Any `laravel/ai` agent may be used as a workflow step. Agents remain plain SDK classes, with no package-specific interfaces or base classes required. Because prompts are defined on the step rather than the agent, the same agent may be asked different things in different workflows.
 
-```php
-// In ContractReview::build():
-return $workflow
-    ->step(
-        ExtractClausesAgent::class,
-        'Extract the key clauses: {{ contract }}'
-    )
-    ->step(
-        RiskAnalysisAgent::class,
-        'Assess the risk of: {{ output:ExtractClausesAgent }}'
-    );
-```
-
-Because prompts are defined on the step rather than the agent, the same agent may be asked different things in different workflows.
+An agent step's output is checkpointed into the workflow state under `steps.{step-id}` and read back with [`$state->output()`](workflow-state.md#retrieving-step-output). Its token usage and [per-call detail](runs-and-observability.md#per-call-audit) land on the step's audit row.
 
 ## Prompts
 
-An agent step resolves its prompt through a ladder; the first rung that produces a string wins.
+An agent step resolves its prompt through a ladder, and the first rung that produces a string wins: an explicit prompt on the step, then a conventional prompt method, then the state's `prompt` key. When every rung comes up empty, the step fails with a `MissingWorkflowPromptException` naming all three options.
 
-**A string on the step.** The prompt is the step's second argument. At its simplest, it is a plain string:
+### Strings and Templates
+
+The prompt is the step's second argument. At its simplest, it is a plain string:
 
 ```php
 ->step(SummarizeAgent::class, 'Summarize the standard weekly report.')
@@ -54,32 +46,28 @@ Most prompts need the run's data, so string prompts may carry `{{ placeholder }}
 )
 ```
 
-Placeholders resolve dot paths into the state bag (`{{ contract }}`, `{{ document.title }}`, resume payloads, delivered event data), and the `output:` form addresses a prior step the way `$state->output()` does: bare `{{ output:StepId }}` is the step's text (or its whole structured output when the agent is structured), and `{{ output:StepId.path }}` reaches into the structured output. Booleans render as `true`/`false`; arrays and objects JSON-encode.
+- Placeholders resolve dot paths into the state bag (`{{ contract }}`, `{{ document.title }}`, resume payloads, delivered event data). The `output:` form addresses a prior step like [`$state->output()`](workflow-state.md#retrieving-step-output): bare for the text, `.path` into structured output. Booleans render as `true`/`false`, and arrays are JSON-encoded.
+- An unresolvable placeholder **fails the step** with a `MissingWorkflowPromptException` naming it, rather than quietly prompting with a hole. Fix the path, or supply the missing state.
+- There is **no escape syntax**. Since `{{` cannot occur inside valid JSON, prompts containing JSON examples pass through untouched. The rare prompt needing a literal `{{` should use a closure. Only definition-authored strings interpolate, never closure results or runtime data.
 
-Two deliberate rules keep templates safe. An unresolvable placeholder **fails the step** with a `MissingWorkflowPromptException` naming it, rather than quietly prompting the agent with a hole. And there is **no escape syntax**: `{{` cannot occur inside valid JSON, so prompts containing JSON examples pass through untouched, and the rare prompt that needs a literal `{{` should use a closure. Only definition-authored strings are interpolated; closure results and the state `prompt` fallback never are, so runtime data can never smuggle placeholders into a prompt.
+The named form `prompt:` combines with other named arguments: `->step(RiskAnalysisAgent::class, prompt: 'Assess the risk.', as: 'risk')`.
 
-A prompt may also be a closure receiving the state, for logic that outgrows a template:
+### Closures
 
-```php
-->step(
-    RiskAnalysisAgent::class,
-    fn (WorkflowState $state) => 'Assess the risk of: '.$state->get('steps.ExtractClausesAgent.text')
-)
-```
-
-Note the trade: string templates hash verbatim into the [definition fingerprint](defining-workflows.md#definition-drift), so editing one is drift-visible; closures hash as an opaque `(closure)`.
-
-The named form `prompt:` works everywhere the positional form does, and is how a prompt combines with other named arguments:
+A prompt may be a closure receiving the state, for logic a template cannot express:
 
 ```php
 ->step(
     RiskAnalysisAgent::class,
-    prompt: 'Assess the risk.',
-    as: 'risk'
+    fn (WorkflowState $state) => 'Assess the risk of: '.($state->get('revised') ?? $state->get('draft'))
 )
 ```
 
-**Optionally, a conventional prompt method.** When a step defines no prompt, the workflow class is checked for a method named `{camelStepId}Prompt`, which receives the state and returns the prompt. Entirely opt-in: nothing changes for workflows that pass prompts on their steps. It earns its keep when prompts grow long, keeping `build` a skimmable table of contents while the prose lives below it:
+There is a trade to be aware of: string templates hash verbatim into the [definition fingerprint](defining-workflows.md#definition-drift), so editing one is drift-visible, while closures hash as an opaque `(closure)`.
+
+### Conventional Prompt Methods
+
+When a step defines no prompt, the workflow class is checked for a method named `{camelStepId}Prompt`. The method receives the state and returns the prompt. This convention earns its keep when prompts grow long, keeping `build` a skimmable table of contents:
 
 ```php
 return $workflow->step(RiskAnalysisAgent::class);
@@ -91,56 +79,34 @@ protected function riskAnalysisAgentPrompt(WorkflowState $state): string
 }
 ```
 
-An aliased step looks for its alias: `->step(RiskAnalysisAgent::class, as: 'risk')` binds `riskPrompt()`. Prompt methods should be pure functions of the state they receive. An explicit `prompt:` always wins over a matching method, and ids that cannot be method names (`when:3`, a deduped `SummarizeAgent:2`) simply never match.
+An aliased step looks for its alias, so `as: 'risk'` binds `riskPrompt()`. An explicit prompt always wins over a matching method, and ids that cannot be method names (`when:3`, `SummarizeAgent:2`) never match. Prompt methods should be pure functions of the state they receive.
 
 > [!WARNING]
-> Because the method is found by step id, renaming a step's `as:` alias also changes which prompt method binds: a behavior change, not just a cosmetic one. Adding a conventional method to a previously promptless step changes the definition hash, so in-flight runs notice under strict [definition drift](defining-workflows.md#definition-drift), exactly as adding an explicit prompt would.
+> The method is found by step id, so renaming an `as:` alias changes which method binds: a behavior change, not a cosmetic one. Adding a method to a previously promptless step changes the [definition hash](defining-workflows.md#definition-drift), exactly as adding an explicit prompt would.
 
-**The state's `prompt` key.** If neither the step nor the workflow class provides a prompt, the agent is prompted with the value of the state's `prompt` key. This is convenient for chat-shaped workflows where the run's input is the prompt. If no prompt can be resolved at all, the step fails with a `MissingWorkflowPromptException`.
+### The State Fallback
 
-Agent targets in other step types resolve prompts the same way: the `when` method accepts `thenPrompt` and `elsePrompt` arguments for its branches, the `evaluate` method accepts a `prompt` argument for its loop body, and `parallel` branches take theirs from a `[class, prompt]` pair. All of them fall through to the conventional method for their step's id, then the state's `prompt` key.
+With no step prompt and no matching method, the agent is prompted with the value of the state's `prompt` key. This is convenient for chat-shaped workflows where the run's input is the prompt.
 
-Steps also accept an optional `label` for live progress displays — see [defining workflows](defining-workflows.md#steps) and [`$run->progress()`](runs-and-observability.md#run-progress).
-
-## Retrieving Step Output
-
-After an agent step runs, its output is checkpointed into the workflow state under `steps.{step-id}`:
-
-```php
-$run->state['steps']['DraftReplyAgent']['text'];          // the response text
-$run->state['steps']['RiskAnalysisAgent']['structured'];  // structured output
-```
-
-Agents that declare an output schema checkpoint only their `structured` output, since their text form is the same JSON again. All other agents checkpoint `text`.
-
-Within steps, prompts, and conditions, you may prefer the `output` method over hand-written state paths — see [workflow state](workflow-state.md):
-
-```php
-$state->output(RiskAnalysisAgent::class)?->structured('riskScore');
-```
-
-Token usage from every agent response is recorded on the step's row in the run's audit log.
+The same ladder serves agent targets everywhere: `when()` branches (`thenPrompt`/`elsePrompt`), `evaluate()` bodies (`prompt:`), and `parallel()` branches ([`[class, prompt]` pairs](defining-workflows.md#parallel-steps)).
 
 ## Tools
 
-An agent step is one full agentic turn, not a single LLM call. If the agent has tools, the SDK's tool loop runs to completion inside the step: the model may call a tool, read the result, and continue calling tools until it has an answer, capped by the agent's `#[MaxSteps]` attribute. The workflow checkpoints the finished result — so a single `->step(ResearchAgent::class)` may look up an order, query a knowledge base, and draft a response, all in one step.
+An agent step is **one full agentic turn**, not a single LLM call. If the agent has tools, the SDK's tool loop runs to completion inside the step: the model may call a tool, read the result, and continue until it has an answer, capped by the agent's `#[MaxSteps]` attribute. A single `->step(ResearchAgent::class)` may look up an order, query a knowledge base, and draft a response.
 
-The entire turn executes inside one queued job, which has three practical consequences.
+The turn executes inside one queued job, with three practical consequences.
 
 ### Worker Timeouts
 
-A tool-heavy agent makes several LLM calls in one job. You should run workers with a `--timeout` (and a matching `retry_after`) sized to the whole turn, not to a single call. The [operations guide](operations.md) covers sizing in detail.
+You should size worker `--timeout` and `retry_after` to the whole turn, not a single call. See [queue configuration](operations.md#queue-configuration).
 
 ### Retries and Side Effects
 
-The step is the retry unit. A failure at tool-round three retries the entire step from round one; there is no mid-loop checkpoint.
+The step is the [retry unit](runs-and-observability.md#retry-semantics): a failure at tool-round three retries the whole turn from round one.
 
 > [!WARNING]
-> Because a retried step re-runs its whole tool loop, tools may execute more than once for the same logical work. You should keep tools idempotent, or move side-effecting work into its own callback step after the agent.
+> A retried step re-runs its whole tool loop, so tools may execute more than once for the same logical work. Keep tools idempotent, or move side-effecting work into its own callback step after the agent.
 
 ### Tool Approvals
 
-A tool that [requires approval](human-in-the-loop.md#tool-approvals) pauses the agent mid-loop. The package converts the pause into a workflow interrupt and parks the run; when `resume` is called with the approval decisions, the loop continues from where it paused — not from round one. Approval pauses are supported in sequential steps and in `evaluate` loop bodies.
-
-> [!WARNING]
-> Approval-gated agents are not supported inside `parallel` branches. A branch that pauses on approvals fails the run with an explicit error. Keep approval-gated agents in sequential steps before or after the fan-out.
+A tool that requires approval pauses the agent mid-loop. The run parks, and on resume the loop continues from where it paused, not from round one. The full flow, including decisions and replay, lives in [Human in the Loop](human-in-the-loop.md#tool-approvals). Approval pauses work in sequential steps and `evaluate` bodies, [not in parallel branches](defining-workflows.md#parallel-steps).

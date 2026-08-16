@@ -1,0 +1,275 @@
+/**
+ * Blue accent over zinc neutrals.
+ * Light: white surfaces, near-black ink, gray body text. Dark: deep zinc.
+ * Code blocks stay near-black in both modes.
+ */
+
+:root {
+    --vp-font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+    /* Blue accent (links, active nav, buttons) */
+    --vp-c-brand-1: #2563eb;
+    --vp-c-brand-2: #3b82f6;
+    --vp-c-brand-3: #3b82f6;
+    --vp-c-brand-soft: #eff6ff;
+
+    /* Light mode: white surfaces, zinc neutrals */
+    --vp-c-bg: #ffffff;
+    --vp-c-bg-alt: #fafafa;
+    --vp-c-bg-soft: #f4f4f5;
+    --vp-c-bg-elv: #ffffff;
+    --vp-c-divider: #e4e4e7;
+    --vp-c-gutter: #e4e4e7;
+    --vp-c-text-1: #18181b;
+    --vp-c-text-2: #52525b;
+    --vp-c-text-3: #71717a;
+    --vp-sidebar-bg-color: #ffffff;
+
+    /* Body prose sits a step lighter than headings */
+    --docs-body: #3f3f46;
+
+    /* Code blocks: near-black even in light mode */
+    --vp-code-block-bg: #18181b;
+    --vp-code-block-color: #e4e4e7;
+    --vp-code-line-highlight-color: rgba(59, 130, 246, 0.15);
+    --vp-code-copy-code-bg: #27272a;
+    --vp-code-copy-code-hover-bg: #3f3f46;
+    --vp-code-copy-code-border-color: #3f3f46;
+    --vp-code-lang-color: #a1a1aa;
+
+    /* Inline code: bordered gray chip, pink text */
+    --vp-code-color: #be185d;
+    --vp-code-bg: #f4f4f5;
+}
+
+.dark {
+    --vp-c-brand-1: #60a5fa;
+    --vp-c-brand-2: #3b82f6;
+    --vp-c-brand-3: #2563eb;
+    --vp-c-brand-soft: rgba(96, 165, 250, 0.16);
+
+    --vp-c-bg: #18181b;
+    --vp-c-bg-alt: #131316;
+    --vp-c-bg-soft: #27272a;
+    --vp-c-bg-elv: #232326;
+    --vp-c-divider: #27272a;
+    --vp-c-gutter: #131316;
+    --vp-c-text-1: #f4f4f5;
+    --vp-c-text-2: #a1a1aa;
+    --vp-c-text-3: #71717a;
+    --vp-sidebar-bg-color: #18181b;
+
+    --docs-body: #d4d4d8;
+
+    --vp-code-block-bg: #111113;
+    --vp-code-copy-code-bg: #27272a;
+    --vp-code-copy-code-hover-bg: #3f3f46;
+
+    --vp-code-color: #f9a8d4;
+    --vp-code-bg: #27272a;
+}
+
+/* Typography: modest heading scale, roomy body */
+.vp-doc {
+    font-size: 15.5px;
+    line-height: 1.7;
+}
+
+.vp-doc h1 {
+    font-size: 2.1rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+
+.vp-doc h2 {
+    font-size: 1.4rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    border-top: none;
+    margin: 44px 0 12px;
+    padding-top: 8px;
+}
+
+/* The default theme pins the hover anchor to its own h2 padding-top (24px);
+   keep it aligned with ours. */
+.vp-doc h2 .header-anchor {
+    top: 8px;
+}
+
+.vp-doc h3 {
+    font-size: 1.08rem;
+    font-weight: 600;
+}
+
+.vp-doc p,
+.vp-doc li {
+    color: var(--docs-body);
+    line-height: 1.7;
+}
+
+/* Rounded, borderless, near-black code blocks */
+.vp-doc div[class*='language-'] {
+    border-radius: 10px;
+}
+
+.dark .vp-doc div[class*='language-'] {
+    border: 1px solid #27272a;
+}
+
+.vp-doc [class*='language-'] pre,
+.vp-doc [class*='language-'] code {
+    font-size: 13.5px;
+    line-height: 1.65;
+}
+
+/* On mobile the default theme bleeds code blocks to the screen edge
+   (margin: 16px -24px). Keep a little breathing room instead. */
+@media (max-width: 639px) {
+    .vp-doc div[class*='language-'] {
+        margin: 16px -12px;
+        border-radius: 8px;
+    }
+}
+
+/* Inline code as a bordered chip */
+.vp-doc :not(pre) > code {
+    border: 1px solid var(--vp-c-divider);
+    border-radius: 5px;
+    padding: 1px 5px;
+    font-size: 0.85em;
+}
+
+/* Sidebar: white with a hairline edge, active item as a soft blue pill */
+.VPSidebar {
+    border-right: 1px solid var(--vp-c-divider);
+}
+
+.VPSidebarItem.level-0 > .item > .text {
+    font-weight: 700;
+    font-size: 13.5px;
+    color: var(--vp-c-text-1);
+}
+
+.VPSidebarItem .link:hover .text {
+    color: var(--vp-c-text-1);
+}
+
+.VPSidebarItem.is-active > .item {
+    margin-left: -12px;
+    padding-left: 10px;
+    border-left: 2px solid var(--vp-c-brand-1);
+    border-radius: 0 6px 6px 0;
+    background: var(--vp-c-brand-soft);
+}
+
+.VPSidebarItem.is-active > .item .link:hover .text {
+    color: var(--vp-c-brand-1);
+}
+
+/* Search: bordered pill */
+.DocSearch-Button {
+    border: 1px solid var(--vp-c-divider);
+    border-radius: 8px;
+    background: var(--vp-c-bg-alt);
+}
+
+/* Right rail: quiet uppercase label */
+.VPDocAsideOutline .outline-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--vp-c-text-3);
+}
+
+/* Callouts: hairline box with an accent left edge */
+.vp-doc .custom-block {
+    border: 1px solid var(--vp-c-divider);
+    border-left: 3px solid var(--vp-c-brand-1);
+    border-radius: 0 10px 10px 0;
+    background: var(--vp-c-bg-alt);
+    padding: 12px 18px;
+    font-size: 0.94rem;
+}
+
+.vp-doc .custom-block.warning {
+    border-left-color: #d97706;
+}
+
+.vp-doc .custom-block.danger {
+    border-left-color: #dc2626;
+}
+
+.vp-doc .custom-block .custom-block-title {
+    color: var(--vp-c-text-1);
+}
+
+.vp-doc .custom-block p {
+    color: var(--docs-body);
+}
+
+/* Previous/next pager: solid brand-blue buttons instead of outlined cards */
+.prev-next .pager-link {
+    background: #2563eb;
+    border: none;
+    border-radius: 10px;
+    transition: background-color 0.2s;
+}
+
+.prev-next .pager-link:hover {
+    background: #1d4ed8;
+}
+
+.prev-next .pager-link .desc {
+    color: rgba(255, 255, 255, 0.72);
+}
+
+.prev-next .pager-link .title {
+    color: #ffffff;
+}
+
+.dark .prev-next .pager-link {
+    background: #1d4ed8;
+}
+
+.dark .prev-next .pager-link:hover {
+    background: #2563eb;
+}
+
+.dark .prev-next .pager-link .desc {
+    color: rgba(219, 234, 254, 0.65);
+}
+
+.dark .prev-next .pager-link .title {
+    color: #eff6ff;
+}
+
+/* Tables: bottom hairlines only, no stripes or cell borders. On mobile,
+   keep the default scrollable block so wide tables never overflow the page. */
+@media (min-width: 640px) {
+    .vp-doc table {
+        display: table;
+        width: 100%;
+    }
+}
+
+.vp-doc tr {
+    border: none;
+    background: transparent !important;
+}
+
+.vp-doc th,
+.vp-doc td {
+    border: none;
+    border-bottom: 1px solid var(--vp-c-divider);
+    padding: 8px 16px 8px 0;
+    background: transparent !important;
+    text-align: left;
+    vertical-align: top;
+}
+
+.vp-doc th {
+    color: var(--vp-c-text-1);
+    font-weight: 600;
+}

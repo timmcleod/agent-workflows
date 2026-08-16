@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1366 328" width="1366" height="328" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <g transform="translate(38, 55)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="35" cy="165" r="19" fill="#141b23"/>
+    <path stroke="#141b23" stroke-width="18"
+          d="M53 165 H98 L156 62 L222 176 Q232 194 242 176 L258 146 Q265 133 272 146 L288 176 Q298 194 308 176 L346 105 Q351 95 362 95 H414"/>
+    <circle cx="443" cy="95" r="17" stroke="#0d58f1" stroke-width="11"/>
+    <circle cx="265" cy="33" r="15" stroke="#0d58f1" stroke-width="11"/>
+    <g fill="#0d58f1">
+      <circle cx="265" cy="70" r="5"/>
+      <circle cx="265" cy="90" r="5"/>
+      <circle cx="265" cy="110" r="5"/>
+      <circle cx="265" cy="130" r="5"/>
+    </g>
+  </g>
+  <text x="572" y="188" font-size="100" font-weight="700" letter-spacing="-2" fill="#141b23">agent-<tspan fill="#0d58f1">workflows</tspan></text>
+  <text x="575" y="250" font-size="26" font-weight="600" letter-spacing="6" fill="#71717a">DURABLE WORKFLOWS FOR AI AGENTS</text>
+</svg>
